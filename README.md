@@ -37,8 +37,7 @@ This repository demonstrates how to:
 
 In this phase, we measure how fast the Heltec WiFi LoRa V3 board can acquire samples. We continuously read from the ADC in a tight loop for 1 second, then count the total number of samples collected. Converting that count to “samples per second” (Hz) gives us the board’s maximum practical sampling rate.
 
-**Code Reference**:  
-[maximum-frequency.ino](/sampling/maximum-frequency.ino)
+**Code Reference**: [maximum-frequency.ino](/sampling/maximum-frequency.ino)
 
 **Outcome**:  
 By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling rate. This value is our baseline “maximum sampling frequency,” guiding how we set the upper bound for all subsequent phases in this project.
