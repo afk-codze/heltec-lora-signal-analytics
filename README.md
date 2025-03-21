@@ -76,7 +76,7 @@ If you encounter permission issues while accessing the serial port, run the foll
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
-
+```
 ---
 
 ## Contributing
