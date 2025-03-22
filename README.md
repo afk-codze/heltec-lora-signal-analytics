@@ -64,6 +64,20 @@ In this phase, we aggregate our sensor data by computing a **rolling average** o
 **Outcome**:  
 The outcome is a **continuous rolling average signal** computed over a 0.1‑second window.
 
+### Phase 4: MQTT Transmission to an Edge Server
+
+In this phase, we **transmit the rolling average** value computed in Phase 3 to an **edge server** using **MQTT** over Wi-Fi. We introduce **WiFi connectivity** and **MQTT publishing** into our existing FreeRTOS tasks, ensuring that the **aggregated data** is sent in real time as it’s computed. For demonstration, we use **Adafruit IO** as a convenient MQTT platform, but this approach works similarly with other MQTT brokers.
+
+**Key Steps**:
+1. **Connect to WiFi** – Provide your SSID and password so the ESP32 can join your local network.  
+2. **Initialize MQTT** – Configure the MQTT client (e.g., AdafruitIO_WiFi or PubSubClient) with broker credentials (username, key, or password).  
+3. **Publish the Aggregate** – After computing the rolling average, publish it to an MQTT topic (e.g., `sensor-rolling-average`).  
+4. **Monitor** – Subscribe to the same MQTT topic from a dashboard or command-line client to verify data is arriving.
+
+**Code Reference**: [rolling-average-MQTT.ino](/aggregate-function-and-transmission/rolling-average-MQTT.ino)
+
+**Outcome**:  
+By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted in real time** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
 
 ---
 
@@ -86,6 +100,7 @@ Ensure you have **Arduino IDE** installed and follow these steps:
 
 - Install **ESP32 board support** by Espressif (version **3.1.1** or later).
 - Install **arduinoFFT** by Enrique Condes (version **2.0.4** or later).
+- install **Adafruit IO Arduino** by Adafruit (version **4.3.0** or later)
 
 ### 2. Select the Correct Board & Port
 
