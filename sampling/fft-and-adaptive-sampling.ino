@@ -25,7 +25,7 @@ void loop()
   for (uint16_t i = 0; i < SAMPLES; i++)
   {
     vReal[i] = AMPLITUDE * sin(i * ratio) / 2.0;
-    vImag[i] = 0.0;  // Imag part is zero initially
+    vImag[i] = 0.0;
   }
 
   FFT.windowing(vReal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
@@ -38,6 +38,5 @@ void loop()
   Serial.print(peakFrequency, 2);
   Serial.println(" Hz");
 
-  // --- 5) Wait before repeating ---
-  delay(2000);  // 2 seconds
+  delay(2000);
 }
