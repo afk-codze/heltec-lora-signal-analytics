@@ -20,11 +20,11 @@ This repository demonstrates how to build an **IoT system** on a **Heltec WiFi L
 2. **Phase 2** – **FFT and Adaptive Sampling**  
    After we know our maximum sampling frequency, we sample the signal at that rate (initially), perform an FFT, detect the highest frequency in the signal, and adjust the sampling frequency accordingly (following Nyquist’s theorem).
 
-3. **Phase 3** – **Compute Aggregate Over a Window**  
-   TBD
+3. **Phase 3 – Compute Aggregate Over a Window**  
+We compute a **rolling average** of the sampled data over a short time window (e.g., 0.1 s).
 
-4. **Phase 4** – **MQTT Transmission to an Edge Server**  
-   TBD
+4. **Phase 4 – MQTT Transmission to an Edge Server**  
+We **publish** the aggregated (rolling average) data to a **nearby edge server** via **MQTT** over Wi-Fi, enabling **real-time monitoring** and **seamless integration** with other analytics or dashboards.
 
 5. **Phase 5** – **LoRaWAN Transmission to the Cloud**  
    TBD
@@ -63,6 +63,8 @@ In this phase, we aggregate our sensor data by computing a **rolling average** o
 
 **Outcome**:  
 The outcome is a **continuous rolling average signal** computed over a 0.1‑second window.
+![image](https://github.com/user-attachments/assets/b7019505-eb7d-4512-aff0-eea462d6f666)
+
 
 ### Phase 4: MQTT Transmission to an Edge Server
 
@@ -78,6 +80,8 @@ In this phase, we **transmit the rolling average** value computed in Phase 3 t
 
 **Outcome**:  
 By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted in real time** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
+![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
+
 
 ---
 
