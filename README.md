@@ -1,14 +1,14 @@
 # Adaptive Heltec WiFi LoRa V3 Signal analytics
 
-This repository demonstrates how to:
+This repository demonstrates how to build an **IoT system** on a **Heltec WiFi LoRa V3 (ESP32)** board with **FreeRTOS**, capable of:
 
-- **Capture** a sensor signal at high speed on a Heltec WiFi LoRa V3 board (ESP32-based).
-- **Analyze** the signal with an FFT to determine its maximum frequency and compute the best frequency to reproduce the signal with the nyquist bla bla.
-- **Adapt** the sampling frequency dynamically based on the real-time signal characteristics to save power and reduce overhead.
-- **Aggregate** Compute the average of the sampled signal over a window ...
+- **Capturing** a sensor signal (e.g., sums of sine waves like `2*sin(2π*3t) + 4*sin(2π*5t)`) at a high sampling rate.
+- **Analyzing** the signal locally using an **FFT** to determine the highest frequency component and **adapt** the sampling frequency (per **Nyquist’s theorem**) to save energy and reduce overhead.
+- **Aggregating** the signal data by computing an average (or other metrics) over a specified time window (e.g., 5 seconds).
+- **Transmitting** the aggregated value to a nearby edge server via **MQTT over Wi-Fi**.
+- **Relaying** that same aggregated value to the cloud using **LoRaWAN** and **TTN** for long-range, low-power connectivity.
 
-> “Why sample at super-high frequency if your signal doesn’t need it?  
-> Let’s adapt and save energy!”
+> **Goal**: Demonstrate an IoT workflow that collects, processes, and transmits sensor data efficiently, adjusting the sampling rate in real time to balance **fidelity** and **power consumption**.
 
 ---
 
@@ -48,8 +48,10 @@ In this phase, we initially tried using our **theoretical maximum** (around 32,2
 
 **Code Reference**: [fft-and-adaptive-sampling.ino](/sampling/fft-and-adaptive-sampling.ino)
 
-**Outcome**:
-We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.
+**Outcome**:  
+We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.  
+
+When testing our **simulated signal**, we identified a **maximum frequency component** of ~205.19 Hz in the FFT output. By **Nyquist’s theorem**, the **minimum** sampling frequency to reconstruct this signal without aliasing is **2 × 205.19 Hz ≈ 410.38 Hz**.  
 
 > **TODO**: Return to this phase for a **more systematic approach** in selecting the optimal high-end sampling frequency, rather than relying solely on manual trial-and-error.
 
