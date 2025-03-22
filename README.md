@@ -37,11 +37,20 @@ This repository demonstrates how to:
 
 In this phase, we measure how fast the Heltec WiFi LoRa V3 board can acquire samples. We continuously read from the ADC in a tight loop for 1 second, then count the total number of samples collected. Converting that count to “samples per second” (Hz) gives us the board’s maximum practical sampling rate.
 
-**Code Reference**: [maximum-frequency.ino](/sampling/maximum-frequency.ino)
 
-**Outcome**:  
+**Outcome**:
 By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling rate. This value is our baseline “maximum sampling frequency,” guiding how we set the upper bound for all subsequent phases in this project.
 
+### Phase 2: FFT and Adaptive Sampling
+
+In this phase, we initially tried using our **theoretical maximum** (around 32,200 Hz) from Phase 1. Once we added the **real workloads**—including FFT computations and other tasks—our system became **unreliable** at that rate. Through experimentation, we found that **5 kHz** was both **stable** and **sufficient** for our signal needs (up to ~2.5 kHz, following Nyquist’s rule).
+
+**Code Reference**: [maximum-frequency.ino](/sampling/maximum-frequency.ino)
+
+**Outcome**:
+We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.
+
+> **TODO**: Return to this phase for a **more systematic approach** in selecting the optimal high-end sampling frequency, rather than relying solely on manual trial-and-error.
 
 ---
 
@@ -87,6 +96,6 @@ Feel free to submit pull requests for improvements or open issues for any bugs o
 
 ## License
 
-This project is open-source. You can use it in your own IoT adventures—just be sure to pay it forward and give credit where it’s due. 
+This project is open-source. You can use it in your own IoT adventures—just be sure to pay it forward and give credit where it’s due.
 
 ---
