@@ -47,7 +47,7 @@ By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling 
 
 In this phase, we initially tried using our **theoretical maximum** (around 32,200 Hz) from Phase 1. Once we added the **real workloads**—including FFT computations and other tasks—our system became **unreliable** at that rate. Through experimentation, we found that **5 kHz** was both **stable** and **sufficient** for our signal needs (up to ~2.5 kHz, following Nyquist’s rule).
 
-**Code Reference**: [fft-and-adaptive-sampling.ino](/sampling/fft-and-adaptive-sampling.ino)
+**Code Reference**: [maximum-frequency.ino](/sampling/maximum-frequency.ino)
 
 **Outcome**:
 We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.
