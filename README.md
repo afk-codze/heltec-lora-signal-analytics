@@ -55,6 +55,16 @@ When testing our **simulated signal**, we identified a **maximum frequency compo
 
 > **TODO**: Return to this phase for a **more systematic approach** in selecting the optimal high-end sampling frequency, rather than relying solely on manual trial-and-error.
 
+### Phase 3: Compute Aggregate Over a Window
+
+In this phase, we aggregate our sensor data by computing a **rolling average** over a **0.1‑second window**. Our implementation uses two dedicated **FreeRTOS tasks**: one task generates a 200 Hz sine wave at an internal simulation rate of 5 kHz, and another task samples that generated signal at approximately 410 Hz. The sampling task uses a ring buffer (storing roughly 41 samples) along with a running sum to efficiently compute the rolling average as new samples arrive and the oldest ones are discarded.
+
+**Code Reference**: [rolling-average.ino](/aggregate-function-and-transmission/rolling-average.ino)
+
+**Outcome**:  
+The outcome is a **continuous rolling average signal** computed over a 0.1‑second window.
+
+
 ---
 
 ### Hardware & Software Requirements
