@@ -101,4 +101,3 @@ Feel free to submit pull requests for improvements or open issues for any bugs o
 This project is open-source. You can use it in your own IoT adventures—just be sure to pay it forward and give credit where it’s due.
 
 ---
-```
