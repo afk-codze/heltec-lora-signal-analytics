@@ -37,6 +37,7 @@ This repository demonstrates how to:
 
 In this phase, we measure how fast the Heltec WiFi LoRa V3 board can acquire samples. We continuously read from the ADC in a tight loop for 1 second, then count the total number of samples collected. Converting that count to “samples per second” (Hz) gives us the board’s maximum practical sampling rate.
 
+**Code Reference**: [maximum-theoretical-frequency.ino](/sampling/maximum-theoretical-frequency.ino)
 
 **Outcome**:
 By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling rate. This value is our baseline “maximum sampling frequency,” guiding how we set the upper bound for all subsequent phases in this project.
@@ -45,7 +46,7 @@ By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling 
 
 In this phase, we initially tried using our **theoretical maximum** (around 32,200 Hz) from Phase 1. Once we added the **real workloads**—including FFT computations and other tasks—our system became **unreliable** at that rate. Through experimentation, we found that **5 kHz** was both **stable** and **sufficient** for our signal needs (up to ~2.5 kHz, following Nyquist’s rule).
 
-**Code Reference**: [maximum-frequency.ino](/sampling/maximum-frequency.ino)
+**Code Reference**: [fft-and-adaptive-sampling.ino](/sampling/fft-and-adaptive-sampling.ino)
 
 **Outcome**:
 We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.
@@ -72,6 +73,7 @@ We set a **5 kHz** sampling frequency as our practical upper bound for capturing
 Ensure you have **Arduino IDE** installed and follow these steps:
 
 - Install **ESP32 board support** by Espressif (version **3.1.1** or later).
+- Install **arduinoFFT** by Enrique Condes (version **2.0.4** or later).
 
 ### 2. Select the Correct Board & Port
 
