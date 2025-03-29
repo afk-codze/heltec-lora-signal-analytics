@@ -2,16 +2,11 @@
 #include <FreeRTOS.h>
 #include <WiFi.h>
 #include "AdafruitIO_WiFi.h"
+#include "secrets.h"
 
 // -----------------------------------------------------------------------------
 // Parameters
 // -----------------------------------------------------------------------------
-
-// WiFi and Adafruit IO credentials
-static const char* WIFI_SSID    = "YOUR_WIFI_SSID";
-static const char* WIFI_PASS    = "YOUR_WIFI_PASSWORD";
-static const char* IO_USERNAME  = "YOUR_ADAFRUIT_IO_USERNAME";
-static const char* IO_KEY       = "YOUR_ADAFRUIT_IO_KEY";
 
 // Signal generation parameters
 static const double SIGNAL_FREQUENCY   = 200.0;   // Hz for generated sine wave
