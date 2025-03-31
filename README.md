@@ -82,6 +82,53 @@ In this phase, we **transmit the rolling average** value computed in Phase 3 t
 By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted in real time** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
 ![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
 
+Here's a **Phase 5** section modeled after your **Phase 4 (MQTT)** example, but adapted to describe the **LoRaWAN integration** using TTN:
+
+---
+
+### Phase 5: LoRaWAN Transmission to The Things Network (TTN)
+
+In this phase, we replace the MQTT-based Wi-Fi transmission with a **LoRaWAN uplink** using the Heltec WiFi LoRa V3 board. The goal is to transmit the **rolling average** computed in Phase 3 over **LoRaWAN** to a public LoRaWAN network—specifically, **The Things Network (TTN)**.
+
+We integrate LoRaWAN connectivity directly into our FreeRTOS system, maintaining real-time signal processing while complying with LoRaWAN’s low-power, low-bandwidth constraints. The Heltec LoRaWAN library handles join requests, uplinks, and network interactions.
+
+**Key Steps:**
+
+1. **Register on TTN**  
+   - Go to [TTN Console](https://console.thethingsnetwork.org/), select your region, and **create an account**.  
+   - Create an **Application**, then **Register a Device** to obtain your LoRaWAN credentials (`DevEUI`, `AppEUI`, `AppKey`).
+
+2. **Configure the Arduino IDE for LoRaWAN**  
+   - Install **Heltec ESP32 Series Dev-Boards** and **Heltec ESP32 Dev-Boards library**.  
+   - Select the board:  
+     `Tools → Board → Heltec ESP32 Series Dev-Boards → WiFi LoRa 32 (V3)`  
+   - Set region:  
+     `Tools → LoRaWAN Region → REGION_EU868` (or your region).
+
+3. **Include Credentials**  
+   - Store `DevEUI`, `AppEUI`, and `AppKey` in a `secrets.h` file (excluded from version control).  
+   - Use OTAA to join the TTN network.
+
+4. **Join the Network**  
+   - Upon boot, the device sends a join request to TTN.  
+   - Once accepted, it begins transmitting data at the defined duty cycle.
+
+5. **Send the Rolling Average**  
+   - After computing the rolling average, the value is encoded as a 4-byte float and sent via **uplink** to TTN using a FreeRTOS task.
+
+6. **Decode the Payload in TTN Console**  
+   - Add a **Payload Formatter** in the TTN Application to convert the 4-byte float into a readable number.  
+   - The rolling average becomes visible in the console or can be forwarded to external integrations (e.g., webhooks, cloud functions).
+
+
+**Code Reference**: [rolling-average-MQTT.ino](/aggregate-function-and-transmission/rolling-average-MQTT.ino)
+
+**Outcome**
+
+By integrating LoRaWAN uplink into the system, the rolling average is now transmitted wirelessly over a **long-range, low-power network**, enabling use in **remote**, **off-grid**, or **battery-powered** environments.
+
+![photo_2025-03-31_20-47-49](https://github.com/user-attachments/assets/959664dc-05f4-48d0-bf54-aa8d806f08d5)
+
 
 ---
 
@@ -91,7 +138,7 @@ By integrating **MQTT** into the sampling/aggregation task, the **rolling averag
 - **Arduino IDE** (with Heltec board packages installed)
 - **FreeRTOS** (already included in the ESP32 Arduino core)
 - **MQTT Broker** (any local broker, e.g., Mosquitto, or external service)
-- **LoRaWAN** TBD
+- **LoRaWAN** (Configured via The Things Network (TTN), using OTAA (Over-The-Air Activation))
 - **Cloud infrastructure** TBD
 
 ---
@@ -100,25 +147,57 @@ By integrating **MQTT** into the sampling/aggregation task, the **rolling averag
 
 ### 1. Install Dependencies
 
-Ensure you have **Arduino IDE** installed and follow these steps:
+Ensure you have the **Arduino IDE** installed and follow these steps:
 
 - Install **ESP32 board support** by Espressif (version **3.1.1** or later).
 - Install **arduinoFFT** by Enrique Condes (version **2.0.4** or later).
-- install **Adafruit IO Arduino** by Adafruit (version **4.3.0** or later)
+- Install **Adafruit IO Arduino** by Adafruit (version **4.3.0** or later).
+- Install **Adafruit GFX Library** by Adafruit.
+- Add Heltec board support:
+  - Go to **File → Preferences** → Add this URL to "Additional Board Manager URLs":
+    ```
+    https://resource.heltec.cn/download/package_heltec_esp32_index.json
+    ```
+  - Then go to **Tools → Board → Board Manager** and install **Heltec ESP32 Series Dev-Boards**.
+  - Go to **Sketch → Include Library → Manage Libraries**, search for and install:
+    - **Heltec ESP32 Dev-Boards** by Heltec.
 
-### 2. Select the Correct Board & Port
 
-- In **Arduino IDE**, navigate to `Tools → Board → ESP32` and select **Heltec WiFi LoRa 32 (V3)**.
-- Go to `Tools → Port` and choose the correct COM port:
-  - **Linux:** `/dev/ttyUSB0`
+### 2. Set Up The Things Network (TTN)
 
-### 3. Fix Serial Port Permission Issues (Linux)
+- Go to [https://console.thethingsnetwork.org/](https://console.thethingsnetwork.org/)  
+- Choose your region and **create an account** (or log in).  
+- Create an **Application** → inside the application, **Register a Device**.  
+- You will receive your **DevEUI**, **AppEUI**, and **AppKey** (for OTAA) which go into your `secrets.h` file.
 
-If you encounter permission issues while accessing the serial port, run the following command:
+
+### 3. Select the Correct Board & LoRaWAN Region
+
+- In the Arduino IDE:
+  - Go to **Tools → Board → Heltec ESP32 Series Dev-Boards → WiFi LoRa 32 (V3)**.
+  - Then go to **Tools → LoRaWAN Region** and select `REGION_EU868` (or your region).
+
+
+### 4. Select the Correct COM Port
+
+- Go to **Tools → Port** and select the port matching your device:
+  - Linux: `/dev/ttyUSB0`
+
+### 5. Fix Serial Port Permissions (Linux only)
+
+If you encounter permission issues accessing the serial port, run:
 
 ```bash
 sudo chmod 666 /dev/ttyUSB0
 ```
+
+Or better (recommended):
+
+```bash
+sudo usermod -a -G dialout $USER
+```
+Then log out and back in.
+
 ---
 
 ## Contributing
