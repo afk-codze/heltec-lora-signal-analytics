@@ -66,7 +66,7 @@ The outcome is a **continuous rolling average signal** computed over a 0.1‑sec
 ![image](https://github.com/user-attachments/assets/b7019505-eb7d-4512-aff0-eea462d6f666)
 
 
-### Phase 4: MQTT Transmission to an Edge Server
+### Phase 4: MQTT Transmission to an Edge Server over WiFi
 
 In this phase, we **transmit the rolling average** value computed in Phase 3 to an **edge server** using **MQTT** over Wi-Fi. We introduce **WiFi connectivity** and **MQTT publishing** into our existing FreeRTOS tasks, ensuring that the **aggregated data** is sent in real time as it’s computed. For demonstration, we use **Adafruit IO** as a convenient MQTT platform, but this approach works similarly with other MQTT brokers.
 
@@ -86,49 +86,147 @@ Here's a **Phase 5** section modeled after your **Phase 4 (MQTT)** example, but 
 
 ---
 
-### Phase 5: LoRaWAN Transmission to The Things Network (TTN)
+Here’s a revised version of your **Phase 5** description, now including the MQTT subscription via the TTN broker using a Bash script:
 
-In this phase, we replace the MQTT-based Wi-Fi transmission with a **LoRaWAN uplink** using the Heltec WiFi LoRa V3 board. The goal is to transmit the **rolling average** computed in Phase 3 over **LoRaWAN** to a public LoRaWAN network—specifically, **The Things Network (TTN)**.
+---
 
-We integrate LoRaWAN connectivity directly into our FreeRTOS system, maintaining real-time signal processing while complying with LoRaWAN’s low-power, low-bandwidth constraints. The Heltec LoRaWAN library handles join requests, uplinks, and network interactions.
+### Phase 5: LoRaWAN Uplink to The Things Network (TTN) and MQTT Subscription
 
-**Key Steps:**
+In this phase, we replace the MQTT-based Wi-Fi transmission with **LoRaWAN** + MQTT. The device now transmits the **rolling average**, computed in Phase 3, over **LoRaWAN** to **The Things Network (TTN)**—a public, decentralized LoRaWAN infrastructure.
+
+The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-Air Activation)**. The **Heltec LoRaWAN library** manages the join request, uplink scheduling, and network interaction.
+
+
+
+### Key Steps
 
 1. **Register on TTN**  
    - Go to [TTN Console](https://console.thethingsnetwork.org/), select your region, and **create an account**.  
-   - Create an **Application**, then **Register a Device** to obtain your LoRaWAN credentials (`DevEUI`, `AppEUI`, `AppKey`).
+   - Create an **Application**, then **Register a Device** to obtain your LoRaWAN credentials:  
+     - `DevEUI`  
+     - `AppEUI`  
+     - `AppKey`  
 
-2. **Configure the Arduino IDE for LoRaWAN**  
-   - Install **Heltec ESP32 Series Dev-Boards** and **Heltec ESP32 Dev-Boards library**.  
+2. **Configure Arduino IDE for LoRaWAN**  
+   - Install the **Heltec ESP32 Series Dev-Boards** and the **Heltec ESP32 Dev-Boards library**.  
    - Select the board:  
      `Tools → Board → Heltec ESP32 Series Dev-Boards → WiFi LoRa 32 (V3)`  
-   - Set region:  
-     `Tools → LoRaWAN Region → REGION_EU868` (or your region).
+   - Set the LoRaWAN region:  
+     `Tools → LoRaWAN Region → REGION_EU868` (or your specific region)
 
-3. **Include Credentials**  
-   - Store `DevEUI`, `AppEUI`, and `AppKey` in a `secrets.h` file (excluded from version control).  
-   - Use OTAA to join the TTN network.
+3. **Add LoRaWAN Credentials**  
+   - Store `DevEUI`, `AppEUI`, and `AppKey` in a `secrets.h` like seen in: CODEREFERENCEEE.  
+   - Configure the sketch to use **OTAA** for joining the TTN network.
 
-4. **Join the Network**  
-   - Upon boot, the device sends a join request to TTN.  
-   - Once accepted, it begins transmitting data at the defined duty cycle.
+4. **Join the Network and Transmit**  
+   - On boot, the device sends a join request to TTN.  
+   - Once joined, it transmits the **rolling average** value periodically, encoded as a **4-byte float**.  
+   - Transmission occurs within a FreeRTOS task to ensure proper timing and multitasking.
 
-5. **Send the Rolling Average**  
-   - After computing the rolling average, the value is encoded as a 4-byte float and sent via **uplink** to TTN using a FreeRTOS task.
+5. **Subscribe to Uplink Messages via MQTT**  
+   - TTN provides MQTT access to device uplinks. To retrieve the necessary connection details (such as broker URL, username, topic, and API key), navigate to the Integrations → MQTT section of your TTN Console. There, you’ll find all the 
+     credentials needed to subscribe to device messages using an external MQTT client.
+     ![image](https://github.com/user-attachments/assets/5b03b54f-ad5f-48b9-9e23-6e82f6e49f7f)
+
+   - We use a simple Bash script to subscribe to the uplink topic:  
+
+     ```bash
+     #!/bin/bash
+
+     BROKER="eu1.cloud.thethings.network"
+     PORT=1883
+     USERNAME="heltec-lora-signal-analytics@ttn"
+     PASSWORD="YOUR_API_KEY"  # Replace this with your actual API key
+     TOPIC="v3/heltec-lora-signal-analytics@ttn/devices/+/up"
+
+     mosquitto_sub -h "$BROKER" -p "$PORT" -u "$USERNAME" -P "$PASSWORD" -t "$TOPIC"
+     ```
+
+   - This script subscribes to all device uplinks within the application (/+/). The received payload includes metadata and the encoded float.
+
+      ```
+      {
+        "end_device_ids": {
+          "device_id": "heltech-new",
+          "application_ids": {
+            "application_id": "heltec-lora-signal-analytics"
+          },
+          "dev_eui": "***",
+          "join_eui": "***",
+          "dev_addr": "***"
+        },
+        "correlation_ids": [
+          "gs:uplink:***"
+        ],
+        "received_at": "2025-04-02T18:06:01.475695399Z",
+        "uplink_message": {
+          "session_key_id": "***",
+          "f_port": 2,
+          "frm_payload": "***",
+          "decoded_payload": {
+            "rolling_avg": 6.378973960876465
+          },
+          "rx_metadata": [
+            {
+              "gateway_ids": {
+                "gateway_id": "spv-rooftop-panorama",
+                "eui": "***"
+              },
+              "timestamp": 3025567108,
+              "rssi": -119,
+              "channel_rssi": -119,
+              "snr": -3.5,
+              "location": {
+                "latitude": 41.8937,
+                "longitude": 12.49399,
+                "altitude": 55,
+                "source": "SOURCE_REGISTRY"
+              },
+              "uplink_token": "***",
+              "channel_index": 6,
+              "received_at": "2025-04-02T18:06:01.247738664Z"
+            }
+          ],
+          "settings": {
+            "data_rate": {
+              "lora": {
+                "bandwidth": 125000,
+                "spreading_factor": 7,
+                "coding_rate": "4/5"
+              }
+            },
+            "frequency": "867700000",
+            "timestamp": 3025567108
+          },
+          "received_at": "2025-04-02T18:06:01.270786763Z",
+          "confirmed": true,
+          "consumed_airtime": "0.051456s",
+          "version_ids": {
+            "brand_id": "heltec",
+            "model_id": "wifi-lora-32-class-c-otaa",
+            "hardware_version": "_unknown_hw_version_",
+            "firmware_version": "1.0",
+            "band_id": "EU_863_870"
+          },
+          "network_ids": {
+            "net_id": "***",
+            "ns_id": "***",
+            "tenant_id": "ttn",
+            "cluster_id": "eu1",
+            "cluster_address": "eu1.cloud.thethings.network"
+          }
+        }
+      }
+      
+      ```
+
 
 6. **Decode the Payload in TTN Console**  
-   - Add a **Payload Formatter** in the TTN Application to convert the 4-byte float into a readable number.  
-   - The rolling average becomes visible in the console or can be forwarded to external integrations (e.g., webhooks, cloud functions).
+   - In the TTN Application, add a **Payload Formatter** (e.g., using JavaScript) to convert the 4-byte float into a human-readable number.  CODE REFERENCEEE
 
+### Outcome
 
-**Code Reference**: [rolling-average-MQTT.ino](/aggregate-function-and-transmission/rolling-average-MQTT.ino)
-
-**Outcome**
-
-By integrating LoRaWAN uplink into the system, the rolling average is now transmitted wirelessly over a **long-range, low-power network**, enabling use in **remote**, **off-grid**, or **battery-powered** environments.
-
-![photo_2025-03-31_20-47-49](https://github.com/user-attachments/assets/959664dc-05f4-48d0-bf54-aa8d806f08d5)
-
+With LoRaWAN uplink now integrated into the system, the rolling average is transmitted over a **long-range, low-power network**, enabling deployment in **remote, battery-powered, or off-grid environments**. At the same time, **MQTT access to TTN uplinks** allows you to monitor transmissions locally or integrate them with your existing data pipelines.
 
 ---
 
