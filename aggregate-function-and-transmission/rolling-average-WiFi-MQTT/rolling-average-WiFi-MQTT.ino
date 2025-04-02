@@ -18,7 +18,7 @@ static const double SAMPLER_FREQUENCY  = 410.0;   // Hz (approx)
 static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5);
 
 // Rolling average window: 0.1 seconds
-static const double AVERAGE_WINDOW_SEC = 0.1;     
+static const double AVERAGE_WINDOW_SEC = 0.1;
 static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5);
 
 // -----------------------------------------------------------------------------
@@ -26,7 +26,7 @@ static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_W
 // -----------------------------------------------------------------------------
 
 // This variable is updated by Task A and read by Task B.
-volatile double g_currentSignalValue = 0.0; 
+volatile double g_currentSignalValue = 0.0;
 
 // Create Adafruit IO instance and feed globally
 AdafruitIO_WiFi io(IO_USERNAME, IO_KEY, WIFI_SSID, WIFI_PASS);
