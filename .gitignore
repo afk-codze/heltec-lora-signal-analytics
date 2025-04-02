@@ -1,0 +1,3 @@
+aggregate-function-and-transmission/rolling-average-WiFi-MQTT/secrets.h
+aggregate-function-and-transmission/rolling-average-LoRa-MQTT/secrets.h
+aggregate-function-and-transmission/rolling-average-LoRa-MQTT/utils/ttn-subscribe.sh
