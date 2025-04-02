@@ -228,7 +228,6 @@ With LoRaWAN uplink now integrated into the system, the rolling average is trans
 
 This section analyzes the energy profile of the current implementation, where real-time tasks run continuously and periodic data transmissions are used to report sensor-like readings.
 
----
 
 ### LoRa Mode
 
@@ -251,7 +250,7 @@ According to the LoRaWAN Regional Parameters for the EU868 band, DR3 corresponds
 
    - Bandwidth (BW): 125 kHz
 
-Given this parameters, the region that we are currently using and the size of the payload we are able to estimate the time-on-air using The Things Network LoRaWAN airtime calculator:
+Given this parameters, the region that we are currently using and the size of the payload we are able to estimate the time-on-air using [TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/)
 
 ![image](https://github.com/user-attachments/assets/58021857-dac2-49cc-84bc-825b6a18ec83)
 
@@ -269,7 +268,40 @@ txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE
 This introduces jitter around the 15-second base interval, reducing the likelihood of network collisions in multi-device environments.
 
 
-### Wi-Fi Mode (Planned)
+### Wi-Fi Mode
+
+TODO
+
+---
+
+## Latency Analysis
+
+### LoraWan:
+
+In LoRaWAN, devices are categorized into different classes to accommodate various communication needs and power consumption requirements. **Class A** (our case) devices are the most basic and energy-efficient type. They operate on an **Aloha-like protocol**, where the device initiates communication by sending data to the network (uplink). Immediately following this uplink transmission, the device opens two short receive windows:
+
+1. **First Receive Window (RX1):** Opens 5 second after the uplink ends.
+2. **Second Receive Window (RX2):** Opens 1 seconds after the RX1 ends.
+
+Source: https://www.thethingsnetwork.org/docs/lorawan/classes/#class-a
+
+![685178bb-370a-4ebf-8ff7-89bad5cb631d](https://github.com/user-attachments/assets/5e774094-9b1b-4236-8aa9-e226aab4ee0d)
+
+- Transmit Time on Air (ToA) = 164 ms
+- The network sends the ACK in RX1 or RX2
+- We are using confirmed uplinks with up to 4 retries
+
+**Best Case (ACK in RX1 after first try):**
+```
+Latency = ToA + RX1 delay = 0.164 + 5 = 5.164 seconds
+```
+
+**Worst Case (ACK in RX1 after 4th try):**
+```
+Retry cycle is: ToA + RX1 delay + (ToA + RX1 delay + ...) repeated 4 times = 4 × (0.164 + 5) = 20.656 seconds
+```
+
+### Wi-Fi: 
 
 TODO
 
