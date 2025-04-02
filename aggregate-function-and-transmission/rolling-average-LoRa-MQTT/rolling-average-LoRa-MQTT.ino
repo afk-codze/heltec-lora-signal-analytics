@@ -8,17 +8,16 @@
 // -----------------------------------------------------------------------------
 
 /* Channels mask */
-uint16_t userChannelsMask[6] = { 0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000 };
-
 uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 DeviceClass_t loraWanClass    = CLASS_A;
 uint32_t appTxDutyCycle       = 15000;
 bool overTheAirActivation     = true;
 bool loraWanAdr               = true;
-bool isTxConfirmed            = true;
+bool isTxConfirmed            = true; // We are using confirmed messages so we want to receive an ACK
 uint8_t appPort               = 2;
-uint8_t confirmedNbTrials     = 4;
+uint8_t confirmedNbTrials     = 4; // number of trials for confirmed messages (if not received acknowledgment resend at most this number of times)
 
 // -----------------------------------------------------------------------------
 // Rolling average / signal generation parameters
@@ -92,12 +91,6 @@ void sampleSignalTask(void *pvParameters) {
     double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
     g_latestRollingAverage = rollingAverage;
 
-    // Debug
-    Serial.print("Sample: ");
-    Serial.print(newSample);
-    Serial.print("  Avg: ");
-    Serial.println(rollingAverage);
-
     // ~2.44 ms => ~410 Hz
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
@@ -110,7 +103,7 @@ static void prepareTxFrame(uint8_t port) {
   // Send rolling average as a 4-byte float
   float val = (float)g_latestRollingAverage;
 
-  // The Heltec library gives us global appData[] & appDataSize
+  // The Heltec library gives us global appData[] & appDataSize to be set!
   memcpy(appData, &val, sizeof(float));
   appDataSize = sizeof(float);
 }
@@ -157,14 +150,12 @@ void loop() {
   switch (deviceState) {
     case DEVICE_STATE_INIT:
       {
-#if (LORAWAN_DEVEUI_AUTO)
-        // If library auto-generates devEUI from chip ID
-        LoRaWAN.generateDeveuiByChipID();
-#endif
-        // Initialize LoRaWAN w/ chosen region + class
+        #if (LORAWAN_DEVEUI_AUTO)
+          LoRaWAN.generateDeveuiByChipID();
+        #endif
         LoRaWAN.init(loraWanClass, loraWanRegion);
 
-        // If desired, set the default data rate (e.g. DR3)
+        // Default data rate DR3 for EU868
         LoRaWAN.setDefaultDR(3);
 
         deviceState = DEVICE_STATE_JOIN;
@@ -173,23 +164,14 @@ void loop() {
 
     case DEVICE_STATE_JOIN:
       {
-        // OTAA or ABP join process
+        // OTAA in our case -> overTheAirActivation = true;
         LoRaWAN.join();
         break;
       }
 
     case DEVICE_STATE_SEND:
       {
-        // Example time print
-        TimerSysTime_t sysTimeCurrent = TimerGetSysTime();
-        Serial.printf("Unix time: %u.%u\n",
-                      (unsigned int)sysTimeCurrent.Seconds,
-                      (unsigned int)sysTimeCurrent.SubSeconds);
-
-        // Prepare data (rolling average)
         prepareTxFrame(appPort);
-
-        // Send
         LoRaWAN.send();
 
         deviceState = DEVICE_STATE_CYCLE;
@@ -200,7 +182,7 @@ void loop() {
       {
         // Next uplink in appTxDutyCycle plus random offset
         txDutyCycleTime =
-          appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+          appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND); //defaulted by Heltec library to 1000ms
 
         LoRaWAN.cycle(txDutyCycleTime);
         deviceState = DEVICE_STATE_SLEEP;
@@ -216,7 +198,7 @@ void loop() {
 
     default:
       {
-        deviceState = DEVICE_STATE_INIT;
+        deviceState = DEVICE_STATE_INIT; // Reset to init state in case of error or disconnection
         break;
       }
   }
