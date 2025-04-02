@@ -82,12 +82,6 @@ In this phase, we **transmit the rolling average** value computed in Phase 3 t
 By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted in real time** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
 ![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
 
-Here's a **Phase 5** section modeled after your **Phase 4 (MQTT)** example, but adapted to describe the **LoRaWAN integration** using TTN:
-
----
-
-Here’s a revised version of your **Phase 5** description, now including the MQTT subscription via the TTN broker using a Bash script:
-
 ---
 
 ### Phase 5: LoRaWAN Uplink to The Things Network (TTN) and MQTT Subscription
@@ -227,6 +221,57 @@ The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-
 ### Outcome
 
 With LoRaWAN uplink now integrated into the system, the rolling average is transmitted over a **long-range, low-power network**, enabling deployment in **remote, battery-powered, or off-grid environments**. At the same time, **MQTT access to TTN uplinks** allows you to monitor transmissions locally or integrate them with your existing data pipelines.
+
+---
+
+## Energy Consumption and Duty Cycle Analysis
+
+This section analyzes the energy profile of the current implementation, where real-time tasks run continuously and periodic data transmissions are used to report sensor-like readings.
+
+---
+
+### LoRa Mode
+
+In the LoRaWAN configuration, the ESP32 runs two FreeRTOS tasks:
+- A signal generator producing a continuous waveform at a high rate
+- A sampling task that calculates a rolling average periodically
+
+These tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless transceiver is only enabled during transmission. Between transmissions, the system enters **modem sleep**, a low-power state in which the CPU continues to operate while the radio remains off. In this state, the device draws approximately **20 mA**.
+
+Every 15 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most **260 mA** during transmission. 
+
+The duration of each LoRa transmission (time-on-air) was calculated based on the LoRaWAN physical layer settings used in this implementation. We set the default data rate (DR) to 3
+
+```
+LoRaWAN.setDefaultDR(3);
+```
+According to the LoRaWAN Regional Parameters for the EU868 band, DR3 corresponds to:​
+
+   - Spreading Factor (SF): 9​
+
+   - Bandwidth (BW): 125 kHz
+
+Given this parameters, the region that we are currently using and the size of the payload we are able to estimate the time-on-air using The Things Network LoRaWAN airtime calculator:
+
+![image](https://github.com/user-attachments/assets/58021857-dac2-49cc-84bc-825b6a18ec83)
+
+So our duty cycle looks like this:
+
+![3f8a5ecf-4b5d-4c2b-8462-05d92fa7bb0d](https://github.com/user-attachments/assets/ec3c4b4e-dbf1-45b5-ab2c-53f0a6915e55)
+
+
+To avoid synchronized transmissions with other devices, a small randomized offset is applied to each transmission interval:
+
+```cpp
+txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND);
+```
+
+This introduces jitter around the 15-second base interval, reducing the likelihood of network collisions in multi-device environments.
+
+
+### Wi-Fi Mode (Planned)
+
+TODO
 
 ---
 
