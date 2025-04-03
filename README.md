@@ -4,7 +4,7 @@ This repository demonstrates how to build an **IoT system** on a **Heltec WiFi L
 
 - **Capturing** a sensor signal (e.g., sums of sine waves like `2*sin(2π*3t) + 4*sin(2π*5t)`) at a high sampling rate.
 - **Analyzing** the signal locally using an **FFT** to determine the highest frequency component and **adapt** the sampling frequency (per **Nyquist’s theorem**) to save energy and reduce overhead.
-- **Aggregating** the signal data by computing an average (or other metrics) over a specified time window (e.g., 5 seconds).
+- **Aggregating** the signal data by computing an average (or other metrics) over a specified time window (e.g., 0.1 seconds).
 - **Transmitting** the aggregated value to a nearby edge server via **MQTT over Wi-Fi**.
 - **Relaying** that same aggregated value to the cloud using **LoRaWAN** and **TTN** for long-range, low-power connectivity.
 
@@ -23,11 +23,11 @@ This repository demonstrates how to build an **IoT system** on a **Heltec WiFi L
 3. **Phase 3 – Compute Aggregate Over a Window**  
 We compute a **rolling average** of the sampled data over a short time window (e.g., 0.1 s).
 
-4. **Phase 4 – MQTT Transmission to an Edge Server**  
-We **publish** the aggregated (rolling average) data to a **nearby edge server** via **MQTT** over Wi-Fi, enabling **real-time monitoring** and **seamless integration** with other analytics or dashboards.
+4. **Phase 4 – MQTT Transmission to an Edge Server over Wi-Fi**  
+We **publish** the aggregated (rolling average) data to a **nearby edge server** via **MQTT** over Wi-Fi, enabling **real-time monitoring** and **seamless integration** with other services.
 
 5. **Phase 5** – **LoRaWAN Transmission to the Cloud**  
-   TBD
+   The aggregated data is transmitted to the cloud using LoRaWAN. This phase enables low-power, long-range communication suitable for remote or battery-powered deployments.
 
 ---
 
@@ -53,8 +53,6 @@ We set a **5 kHz** sampling frequency as our practical upper bound for capturing
 
 When testing our **simulated signal**, we identified a **maximum frequency component** of ~205.19 Hz in the FFT output. By **Nyquist’s theorem**, the **minimum** sampling frequency to reconstruct this signal without aliasing is **2 × 205.19 Hz ≈ 410.38 Hz**.  
 
-> **TODO**: Return to this phase for a **more systematic approach** in selecting the optimal high-end sampling frequency, rather than relying solely on manual trial-and-error.
-
 ### Phase 3: Compute Aggregate Over a Window
 
 In this phase, we aggregate our sensor data by computing a **rolling average** over a **0.1‑second window**. Our implementation uses two dedicated **FreeRTOS tasks**: one task generates a 200 Hz sine wave at an internal simulation rate of 5 kHz, and another task samples that generated signal at approximately 410 Hz. The sampling task uses a ring buffer (storing roughly 41 samples) along with a running sum to efficiently compute the rolling average as new samples arrive and the oldest ones are discarded.
@@ -76,10 +74,10 @@ In this phase, we **transmit the rolling average** value computed in Phase 3 t
 3. **Publish the Aggregate** – After computing the rolling average, publish it to an MQTT topic (e.g., `sensor-rolling-average`).  
 4. **Monitor** – Subscribe to the same MQTT topic from a dashboard or command-line client to verify data is arriving.
 
-**Code Reference**: [rolling-average-MQTT.ino](/aggregate-function-and-transmission/rolling-average-MQTT.ino)
+**Code Reference**: [rolling-average-WiFi-MQTT.ino](/aggregate-function-and-transmission/rolling-average-WiFi-MQTT/rolling-average-WiFi-MQTT.ino)
 
 **Outcome**:  
-By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted in real time** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
+By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
 ![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
 
 ---
@@ -90,7 +88,7 @@ In this phase, we replace the MQTT-based Wi-Fi transmission with **LoRaWAN** + M
 
 The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-Air Activation)**. The **Heltec LoRaWAN library** manages the join request, uplink scheduling, and network interaction.
 
-
+**Code Reference**: [rolling-average-LoRa-MQTT.ino](aggregate-function-and-transmission/rolling-average-LoRa-MQTT/rolling-average-LoRa-MQTT.ino)
 
 ### Key Steps
 
@@ -109,7 +107,7 @@ The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-
      `Tools → LoRaWAN Region → REGION_EU868` (or your specific region)
 
 3. **Add LoRaWAN Credentials**  
-   - Store `DevEUI`, `AppEUI`, and `AppKey` in a `secrets.h` like seen in: CODEREFERENCEEE.  
+   - Store `DevEUI`, `AppEUI`, and `AppKey` in a `secrets.h` like seen in: [secrets-example.h](aggregate-function-and-transmission/rolling-average-LoRa-MQTT/secrets-example.h)
    - Configure the sketch to use **OTAA** for joining the TTN network.
 
 4. **Join the Network and Transmit**  
@@ -216,7 +214,8 @@ The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-
 
 
 6. **Decode the Payload in TTN Console**  
-   - In the TTN Application, add a **Payload Formatter** (e.g., using JavaScript) to convert the 4-byte float into a human-readable number.  CODE REFERENCEEE
+   - In the TTN Application, add a **Payload Formatter** (e.g., using JavaScript) to convert the 4-byte float into a human-readable number.
+   **Code Reference**: [ttn-payload-formatter.js](aggregate-function-and-transmission/rolling-average-LoRa-MQTT/utils/ttn-payload-formatter.js)
 
 ### Outcome
 
@@ -226,38 +225,38 @@ With LoRaWAN uplink now integrated into the system, the rolling average is trans
 
 ## Energy Consumption and Duty Cycle Analysis
 
-This section analyzes the energy profile of the current implementation, where real-time tasks run continuously and periodic data transmissions are used to report sensor-like readings.
+This section analyzes the energy profile of the current implementations, where real-time tasks run continuously and periodic data transmissions are used to report sensor-like readings. The system is evaluated in two wireless communication configurations: **LoRaWAN** and **Wi-Fi**.
 
+In both modes, the ESP32 executes:
+- A **signal generation task**, producing a 200 Hz sine wave at a high simulation rate (5000 Hz)
+- A **sampling task**, operating at ~410 Hz, that computes a 0.1-second rolling average
+
+The way data is transmitted, and the impact on power consumption, varies greatly between the two communication modes.
 
 ### LoRa Mode
 
-In the LoRaWAN configuration, the ESP32 runs two FreeRTOS tasks:
-- A signal generator producing a continuous waveform at a high rate
-- A sampling task that calculates a rolling average periodically
-
-These tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless transceiver is only enabled during transmission. Between transmissions, the system enters **modem sleep**, a low-power state in which the CPU continues to operate while the radio remains off. In this state, the device draws approximately **20 mA**.
+The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless transceiver is only enabled during transmission. Between transmissions, the system enters **modem sleep**, a low-power state in which the CPU continues to operate while the radio remains off. In this state, the device draws approximately **20 mA** at most.
 
 Every 15 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most **260 mA** during transmission. 
 
 The duration of each LoRa transmission (time-on-air) was calculated based on the LoRaWAN physical layer settings used in this implementation. We set the default data rate (DR) to 3
 
-```
+```cpp
 LoRaWAN.setDefaultDR(3);
 ```
-According to the LoRaWAN Regional Parameters for the EU868 band, DR3 corresponds to:​
 
-   - Spreading Factor (SF): 9​
+According to the LoRaWAN Regional Parameters for the **EU868** band, **DR3** corresponds to:​
 
-   - Bandwidth (BW): 125 kHz
+   - **Spreading Factor (SF)**: 9  
+   - **Bandwidth (BW)**: 125 kHz
 
-Given this parameters, the region that we are currently using and the size of the payload we are able to estimate the time-on-air using [TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/)
+Given these parameters, the region that we are currently using and the size of the payload, we are able to estimate the time-on-air using [TTN LoRaWAN airtime calculator](https://www.thethingsnetwork.org/airtime-calculator/)
 
 ![image](https://github.com/user-attachments/assets/58021857-dac2-49cc-84bc-825b6a18ec83)
 
 So our duty cycle looks like this:
 
 ![3f8a5ecf-4b5d-4c2b-8462-05d92fa7bb0d](https://github.com/user-attachments/assets/ec3c4b4e-dbf1-45b5-ab2c-53f0a6915e55)
-
 
 To avoid synchronized transmissions with other devices, a small randomized offset is applied to each transmission interval:
 
@@ -267,10 +266,20 @@ txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE
 
 This introduces jitter around the 15-second base interval, reducing the likelihood of network collisions in multi-device environments.
 
-
 ### Wi-Fi Mode
 
-TODO
+In the Wi-Fi configuration, the ESP32 again runs the same two tasks for signal generation and rolling average computation. However, in this mode, the average value is **published continuously** to **Adafruit IO** using the MQTT protocol, resulting in a very different power profile.
+
+- The **sampling task** operates at ~410 Hz (every 2.44 ms) and calls `avgFeed->save(...)` at each iteration.
+- While the `save()` call is lightweight in code, it triggers **frequent network activity**, especially if Adafruit IO accepts high-frequency publishing.
+
+The device remains in **active Wi-Fi mode** continuously:
+- **Wi-Fi Idle Current**: ~80 mA (ESP32 connected to Wi-Fi, not transmitting)
+- **Transmission Spikes**: ~260 mA every ~0.5 seconds, each lasting ~150 ms (based on MQTT behavior and practical measurements)
+
+These frequent spikes result in a high-duty-cycle transmission pattern, clearly visible in the energy profile:
+
+![output](https://github.com/user-attachments/assets/f84bee48-c49b-4a90-992f-7905d506480d)
 
 ---
 
@@ -301,9 +310,36 @@ Latency = ToA + RX1 delay = 0.164 + 5 = 5.164 seconds
 Retry cycle is: ToA + RX1 delay + (ToA + RX1 delay + ...) repeated 4 times = 4 × (0.164 + 5) = 20.656 seconds
 ```
 
-### Wi-Fi: 
+### Wi-Fi
 
-TODO
+To measure end-to-end latency over Wi-Fi, we timestamp each MQTT message on the ESP32 using `millis()` and publish it to the topic:
+
+```
+codzetest/feeds/send
+```
+
+A PC running `mosquitto_sub` listens to that topic and immediately echoes the message back to:
+
+```
+codzetest/feeds/echo
+```
+
+The ESP32, subscribed to the echo topic, receives its own message and computes the round-trip latency as:
+
+```
+latency = millis() - sent_timestamp
+```
+
+Example command to echo messages on the PC:
+
+```bash
+mosquitto_sub -h test.mosquitto.org -t "codzetest/feeds/send" | while read line; do
+  mosquitto_pub -h test.mosquitto.org -t "codzetest/feeds/echo" -m "$line"
+done
+```
+![Screenshot From 2025-04-03 11-31-41](https://github.com/user-attachments/assets/d664105d-eb9b-4b1c-bca3-692e015fae40)
+
+Latency may vary based on network conditions.
 
 ---
 
