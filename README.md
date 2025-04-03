@@ -79,6 +79,7 @@ In this phase, we **transmit the rolling average** value computed in Phase 3 t
 
 **Outcome**:  
 By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
+
 ![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
 
 ---
@@ -119,6 +120,7 @@ The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-
 5. **Subscribe to Uplink Messages via MQTT**  
    - TTN provides MQTT access to device uplinks. To retrieve the necessary connection details (such as broker URL, username, topic, and API key), navigate to the Integrations → MQTT section of your TTN Console. There, you’ll find all the 
      credentials needed to subscribe to device messages using an external MQTT client.
+
      ![image](https://github.com/user-attachments/assets/5b03b54f-ad5f-48b9-9e23-6e82f6e49f7f)
 
    - We use a simple Bash script to subscribe to the uplink topic:  
@@ -338,6 +340,7 @@ mosquitto_sub -h test.mosquitto.org -t "codzetest/feeds/send" | while read line;
   mosquitto_pub -h test.mosquitto.org -t "codzetest/feeds/echo" -m "$line"
 done
 ```
+
 ![Screenshot From 2025-04-03 11-31-41](https://github.com/user-attachments/assets/d664105d-eb9b-4b1c-bca3-692e015fae40)
 
 Latency may vary based on network conditions.
