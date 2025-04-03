@@ -2,7 +2,7 @@
 
 This repository demonstrates how to build an **IoT system** on a **Heltec WiFi LoRa V3 (ESP32)** board with **FreeRTOS**, capable of:
 
-- **Capturing** a sensor signal (e.g., sums of sine waves like `2*sin(2π*3t) + 4*sin(2π*5t)`) at a high sampling rate.
+- **Capturing** a sensor signal (e.g., sums of sine waves like `2*sin(2π*150t) + 4*sin(2π*200t)`) at a high sampling rate.
 - **Analyzing** the signal locally using an **FFT** to determine the highest frequency component and **adapt** the sampling frequency (per **Nyquist’s theorem**) to save energy and reduce overhead.
 - **Aggregating** the signal data by computing an average (or other metrics) over a specified time window (e.g., 0.1 seconds).
 - **Transmitting** the aggregated value to a nearby edge server via **MQTT over Wi-Fi**.
@@ -55,13 +55,14 @@ When testing our **simulated signal**, we identified a **maximum frequency compo
 
 ### Phase 3: Compute Aggregate Over a Window
 
-In this phase, we aggregate our sensor data by computing a **rolling average** over a **0.1‑second window**. Our implementation uses two dedicated **FreeRTOS tasks**: one task generates a 200 Hz sine wave at an internal simulation rate of 5 kHz, and another task samples that generated signal at approximately 410 Hz. The sampling task uses a ring buffer (storing roughly 41 samples) along with a running sum to efficiently compute the rolling average as new samples arrive and the oldest ones are discarded.
+In this phase, we aggregate our signal data by computing a **rolling average** over a **0.1‑second window**. Our implementation uses two dedicated **FreeRTOS tasks**: one task generates a composite signal made of 150 Hz and 200 Hz sine waves at an internal simulation rate of 5 kHz, and another task samples that generated signal at approximately 410 Hz. The sampling task uses a ring buffer (storing roughly 41 samples) along with a running sum to efficiently compute the rolling average as new samples arrive and the oldest ones are discarded.
 
 **Code Reference**: [rolling-average.ino](/aggregate-function-and-transmission/rolling-average.ino)
 
 **Outcome**:  
 The outcome is a **continuous rolling average signal** computed over a 0.1‑second window.
-![image](https://github.com/user-attachments/assets/b7019505-eb7d-4512-aff0-eea462d6f666)
+
+![Screenshot From 2025-04-03 17-07-49](https://github.com/user-attachments/assets/872c60f0-ab9a-4d3d-a9ac-fcc47671cfa1)
 
 
 ### Phase 4: MQTT Transmission to an Edge Server over WiFi
@@ -228,7 +229,7 @@ With LoRaWAN uplink now integrated into the system, the rolling average is trans
 This section analyzes the energy profile of the current implementations, where real-time tasks run continuously and periodic data transmissions are used to report sensor-like readings. The system is evaluated in two wireless communication configurations: **LoRaWAN** and **Wi-Fi**.
 
 In both modes, the ESP32 executes:
-- A **signal generation task**, producing a 200 Hz sine wave at a high simulation rate (5000 Hz)
+- A **signal generation task**, generating a composite signal made of 150 Hz and 200 Hz sine waves at an internal simulation rate of 5 kHz.
 - A **sampling task**, operating at ~410 Hz, that computes a 0.1-second rolling average
 
 The way data is transmitted, and the impact on power consumption, varies greatly between the two communication modes.
