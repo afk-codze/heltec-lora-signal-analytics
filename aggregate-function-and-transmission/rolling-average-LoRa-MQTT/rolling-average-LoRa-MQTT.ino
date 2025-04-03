@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------------------
 
 /* Channels mask */
-uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000};
+uint16_t userChannelsMask[6] = {0x00FF, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000}; // default EU868 channels mask
 
 LoRaMacRegion_t loraWanRegion = ACTIVE_REGION;
 DeviceClass_t loraWanClass    = CLASS_A;
@@ -22,19 +22,23 @@ uint8_t confirmedNbTrials     = 4; // number of trials for confirmed messages (i
 // -----------------------------------------------------------------------------
 // Rolling average / signal generation parameters
 // -----------------------------------------------------------------------------
-static const double SIGNAL_FREQUENCY = 200.0;  // Hz
+static const double SIGNAL_FREQUENCY = 200.0;  // Hz for generated sine wave
 static const double GENERATOR_RATE = 5000.0;   // "simulation rate" for generator task
 static const double AMPLITUDE = 100.0;
 
 static const double SAMPLER_FREQUENCY = 410.0;  // Hz
-static const int SAMPLER_PERIOD_MS = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5);
+static const int SAMPLER_PERIOD_MS = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5); // convert to ms from SAMPLER_FREQUENCY
 
-static const double AVERAGE_WINDOW_SEC = 0.1;
-static const int AVERAGE_WINDOW_SAMPLES =
-  (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5);
+static const double AVERAGE_WINDOW_SEC = 0.1; //sliding window size in seconds
+static const int AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5); // # of samples in the averaging window
 
-// Shared data between tasks
+// -----------------------------------------------------------------------------
+// Global Shared Data
+// -----------------------------------------------------------------------------
+
+// This is updated by Task A and read by Task B.
 volatile double g_currentSignalValue = 0.0;
+// This is updated by Task B and read by prepareTxFrame()
 volatile double g_latestRollingAverage = 0.0;
 
 // -----------------------------------------------------------------------------
@@ -63,35 +67,42 @@ void generateSignalTask(void *pvParameters) {
 // Task B: Sample at ~410 Hz + compute 0.1-second rolling average
 // -----------------------------------------------------------------------------
 void sampleSignalTask(void *pvParameters) {
+
+  // Ring buffer to hold the last ~41 samples (0.1 seconds worth at 410 Hz)
   static double ringBuffer[AVERAGE_WINDOW_SAMPLES];
+
   double ringSum = 0.0;
   int ringIndex = 0;
 
-  // Initialize
+  // Initialize the buffer to zeros
   for (int i = 0; i < AVERAGE_WINDOW_SAMPLES; i++) {
     ringBuffer[i] = 0.0;
   }
 
   for (;;) {
+    // Sliding window implementation
+    // 1) Read the latest sample from Task A
     double newSample = g_currentSignalValue;
 
-    // Remove oldest
+    // 2) Remove the oldest sample from the sum
     ringSum -= ringBuffer[ringIndex];
-    // Insert new
+
+    // 3) Place the new sample in the buffer and add it to the sum
     ringBuffer[ringIndex] = newSample;
     ringSum += newSample;
 
-    // Advance index
+    // 4) Advance the ring buffer index (circular buffer)
     ringIndex++;
     if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
       ringIndex = 0;
     }
 
-    // Rolling average
+    // 5) Compute the rolling average
     double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
+
+    // 6) Update the global variable for transmission
     g_latestRollingAverage = rollingAverage;
 
-    // ~2.44 ms => ~410 Hz
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
 }
@@ -124,16 +135,17 @@ void setup() {
   // Set initial device state (uses Heltec's global deviceState)
   deviceState = DEVICE_STATE_INIT;
 
-  // Create Task A: generate sine wave
+  // Create Task A: generates the 200 Hz sine wave
   xTaskCreate(
-    generateSignalTask,
-    "GenerateTask",
-    2048,
-    NULL,
-    1,
-    NULL);
+    generateSignalTask, // Pointer to the function implementing the task
+    "GenerateTask",     // Task name (for debugging)
+    2048,               // Stack
+    NULL,               // Task parameters (not used)
+    1,                  // Task priority (1 is low, 5 is high)
+    NULL                // Task handle (not used)
+  );
 
-  // Create Task B: sample + rolling avg
+  // Create Task B: samples the signal and computes a 0.1-second rolling average
   xTaskCreate(
     sampleSignalTask,
     "SampleTask",
@@ -181,8 +193,7 @@ void loop() {
     case DEVICE_STATE_CYCLE:
       {
         // Next uplink in appTxDutyCycle plus random offset
-        txDutyCycleTime =
-          appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND); //defaulted by Heltec library to 1000ms
+        txDutyCycleTime = appTxDutyCycle + randr(-APP_TX_DUTYCYCLE_RND, APP_TX_DUTYCYCLE_RND); //defaulted by Heltec library to 1000ms
 
         LoRaWAN.cycle(txDutyCycleTime);
         deviceState = DEVICE_STATE_SLEEP;

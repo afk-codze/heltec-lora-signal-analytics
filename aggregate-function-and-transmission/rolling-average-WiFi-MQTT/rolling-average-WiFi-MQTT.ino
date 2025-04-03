@@ -13,19 +13,17 @@ static const double SIGNAL_FREQUENCY   = 200.0;   // Hz for generated sine wave
 static const double GENERATOR_RATE     = 5000.0;  // "simulation rate" for generator task
 static const double AMPLITUDE          = 100.0;
 
-// Sampling and aggregation parameters
-static const double SAMPLER_FREQUENCY  = 410.0;   // Hz (approx)
-static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5);
+static const double SAMPLER_FREQUENCY  = 410.0;   // Hz 
+static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5); // convert to ms from SAMPLER_FREQUENCY
 
-// Rolling average window: 0.1 seconds
-static const double AVERAGE_WINDOW_SEC = 0.1;
-static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5);
+static const double AVERAGE_WINDOW_SEC = 0.1; //sliding window size in seconds
+static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5); // # of samples in the averaging window
 
 // -----------------------------------------------------------------------------
 // Global Shared Data
 // -----------------------------------------------------------------------------
 
-// This variable is updated by Task A and read by Task B.
+// This is updated by Task A and read by Task B.
 volatile double g_currentSignalValue = 0.0;
 
 // Create Adafruit IO instance and feed globally
@@ -51,7 +49,7 @@ void generateSignalTask(void *pvParameters)
       angle -= 2.0 * PI;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(1)); // delay 1 ms converted to ticks
   }
 }
 
@@ -62,6 +60,7 @@ void sampleSignalTask(void *pvParameters)
 {
   // Ring buffer to hold the last ~41 samples (0.1 seconds worth at 410 Hz)
   static double ringBuffer[AVERAGE_WINDOW_SAMPLES];
+
   double ringSum = 0.0;
   int ringIndex = 0;
 
@@ -73,17 +72,18 @@ void sampleSignalTask(void *pvParameters)
 
   for (;;)
   {
-    // 1) Read the newest sample from Task A
+    // Sliding window implementation
+    // 1) Read the latest sample from Task A
     double newSample = g_currentSignalValue;
 
     // 2) Remove the oldest sample from the sum
     ringSum -= ringBuffer[ringIndex];
 
-    // 3) Insert the new sample into the buffer and add it to the sum
+    // 3) Place the new sample in the buffer and add it to the sum
     ringBuffer[ringIndex] = newSample;
     ringSum += newSample;
 
-    // 4) Advance the ring buffer index
+    // 4) Advance the ring buffer index (circular buffer)
     ringIndex++;
     if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
       ringIndex = 0;
@@ -102,7 +102,6 @@ void sampleSignalTask(void *pvParameters)
     snprintf(payload, sizeof(payload), "%.2f", rollingAverage);
     avgFeed->save(payload);
 
-    // 8) Delay for the next sample (~2.44 ms for 410 Hz)
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
 }
@@ -128,12 +127,12 @@ void setup()
 
   // Create Task A: generates the 200 Hz sine wave
   xTaskCreate(
-    generateSignalTask,
-    "GenerateTask",
-    2048,
-    NULL,
-    1,
-    NULL
+    generateSignalTask, // Pointer to the function implementing the task
+    "GenerateTask",     // Task name (for debugging)
+    2048,               // Stack
+    NULL,               // Task parameters (not used)
+    1,                  // Task priority (1 is low, 5 is high)
+    NULL                // Task handle (not used)
   );
 
   // Create Task B: samples the signal and computes a 0.1-second rolling average

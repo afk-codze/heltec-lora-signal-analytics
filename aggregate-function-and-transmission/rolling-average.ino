@@ -9,11 +9,11 @@ static const double SIGNAL_FREQUENCY   = 200.0;   // Hz for generated sine wave
 static const double GENERATOR_RATE     = 5000.0;  // "simulation rate" for generator task
 static const double AMPLITUDE          = 100.0;
 
-static const double SAMPLER_FREQUENCY  = 410.0;   // Hz (approx)
-static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5);
+static const double SAMPLER_FREQUENCY  = 410.0;   // Hz
+static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5); // convert to ms from SAMPLER_FREQUENCY
 
-static const double AVERAGE_WINDOW_SEC = 0.1;
-static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5);
+static const double AVERAGE_WINDOW_SEC = 0.1; //sliding window size in seconds
+static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5); // # of samples in the averaging window
 
 // -----------------------------------------------------------------------------
 // Global Shared Data
@@ -30,7 +30,7 @@ void generateSignalTask(void *pvParameters)
   double stepAngle = 2.0 * PI * SIGNAL_FREQUENCY / GENERATOR_RATE;
   double angle = 0.0;
 
-  for (;;)
+  for (;;) // infinite loop
   {
     double sample = AMPLITUDE * sin(angle) / 2.0;
     g_currentSignalValue = sample;
@@ -41,7 +41,7 @@ void generateSignalTask(void *pvParameters)
       angle -= 2.0 * PI;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(1)); // delay 1 ms converted to ticks
   }
 }
 
@@ -50,7 +50,7 @@ void generateSignalTask(void *pvParameters)
 // -----------------------------------------------------------------------------
 void sampleSignalTask(void *pvParameters)
 {
-  // Ring buffer to hold the last N samples (N ~ 820 for 2s)
+  // Ring buffer to hold the sliding window samples
   static double ringBuffer[AVERAGE_WINDOW_SAMPLES];
 
   double ringSum = 0.0;
@@ -64,7 +64,6 @@ void sampleSignalTask(void *pvParameters)
 
   for (;;)
   {
-
     // Sliding window implementation
     // 1) Read the latest sample from Task A
     double newSample = g_currentSignalValue;
@@ -76,7 +75,7 @@ void sampleSignalTask(void *pvParameters)
     ringBuffer[ringIndex] = newSample;
     ringSum += newSample;
 
-    // 4) Advance the ring buffer index
+    // 4) Advance the ring buffer index (circular buffer)
     ringIndex++;
     if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
       ringIndex = 0; // wrap around
@@ -104,15 +103,15 @@ void setup()
 
   // Task A: generates the 200 Hz sine wave
   xTaskCreate(
-    generateSignalTask,
-    "GenerateTask",
-    2048,
-    NULL,
-    1,
-    NULL
+    generateSignalTask, // Pointer to the function implementing the task
+    "GenerateTask",     // Task name (for debugging)
+    2048,               // Stack
+    NULL,               // Task parameters (not used)
+    1,                  // Task priority (1 is low, 5 is high)
+    NULL                // Task handle (not used)
   );
 
-  // Task B: samples the wave and computes a 2-second rolling average
+  // Task B: samples the wave and computes  rolling average
   xTaskCreate(
     sampleSignalTask,
     "SampleTask",
