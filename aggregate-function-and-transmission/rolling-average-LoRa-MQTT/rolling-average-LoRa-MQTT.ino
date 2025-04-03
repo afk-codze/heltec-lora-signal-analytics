@@ -22,9 +22,13 @@ uint8_t confirmedNbTrials     = 4; // number of trials for confirmed messages (i
 // -----------------------------------------------------------------------------
 // Rolling average / signal generation parameters
 // -----------------------------------------------------------------------------
-static const double SIGNAL_FREQUENCY = 200.0;  // Hz for generated sine wave
 static const double GENERATOR_RATE = 5000.0;   // "simulation rate" for generator task
-static const double AMPLITUDE = 100.0;
+
+static const double FREQ1 = 150.0;  // Hz
+static const double AMP1  = 2.0;
+
+static const double FREQ2 = 200.0;  // Hz
+static const double AMP2  = 4.0;
 
 static const double SAMPLER_FREQUENCY = 410.0;  // Hz
 static const int SAMPLER_PERIOD_MS = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5); // convert to ms from SAMPLER_FREQUENCY
@@ -42,20 +46,22 @@ volatile double g_currentSignalValue = 0.0;
 volatile double g_latestRollingAverage = 0.0;
 
 // -----------------------------------------------------------------------------
-// Task A: Generate a 200 Hz sine wave at ~5000 steps/sec
+// Task A: Generate a composite signal at ~5000 steps/sec
 // -----------------------------------------------------------------------------
 void generateSignalTask(void *pvParameters) {
-  double stepAngle = 2.0 * PI * SIGNAL_FREQUENCY / GENERATOR_RATE;
-  double angle = 0.0;
+  const double dt = 1.0 / GENERATOR_RATE; // time step in seconds
+  double t = 0.0;
 
   for (;;) {
-    double sample = (AMPLITUDE * sin(angle)) / 2.0;
+    // Composite signal: 2*sin(2π*150*t) + 4*sin(2π*200*t)
+    double sample = AMP1 * sin(2.0 * PI * FREQ1 * t) +
+                    AMP2 * sin(2.0 * PI * FREQ2 * t);
     g_currentSignalValue = sample;
 
-    // Advance angle
-    angle += stepAngle;
-    if (angle >= 2.0 * PI) {
-      angle -= 2.0 * PI;
+    // Advance time
+    t += dt;
+    if (t >= 1.0) {
+      t -= 1.0; // wrap after 1 second
     }
 
     // ~1 ms delay => ~5000 samples/sec
@@ -135,7 +141,7 @@ void setup() {
   // Set initial device state (uses Heltec's global deviceState)
   deviceState = DEVICE_STATE_INIT;
 
-  // Create Task A: generates the 200 Hz sine wave
+  // Create Task A: generates the composite sine wave
   xTaskCreate(
     generateSignalTask, // Pointer to the function implementing the task
     "GenerateTask",     // Task name (for debugging)
