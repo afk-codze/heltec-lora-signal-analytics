@@ -15,16 +15,16 @@ This repository demonstrates how to build an **IoT system** on a **Heltec WiFi L
 ## Overview
 
 1. **Phase 1** – **Determine Maximum Sampling Frequency**  
-   We start by finding out how many samples per second (Hz) our board can realistically capture. This provides the upper limit for all subsequent steps.
+   Let's start by finding out how many samples per second (Hz) the board can realistically capture. This provides the upper limit for all subsequent steps.
 
 2. **Phase 2** – **FFT and Adaptive Sampling**  
-   After we know our maximum sampling frequency, we sample the signal at that rate (initially), perform an FFT, detect the highest frequency in the signal, and adjust the sampling frequency accordingly (following Nyquist’s theorem).
+   After finding the maximum sampling frequency, the goal is to sample the signal at that rate (initially), perform an FFT, detect the highest frequency in the signal, and adjust the sampling frequency accordingly (following Nyquist’s theorem).
 
 3. **Phase 3 – Compute Aggregate Over a Window**  
-We compute a **rolling average** of the sampled data over a short time window (e.g., 0.1 s).
+   In this phase the objective is to compute a **rolling average** of the sampled data over a short time window (e.g., 0.1 s).
 
 4. **Phase 4 – MQTT Transmission to an Edge Server over Wi-Fi**  
-We **publish** the aggregated (rolling average) data to a **nearby edge server** via **MQTT** over Wi-Fi, enabling **real-time monitoring** and **seamless integration** with other services.
+   **Publish** the aggregated (rolling average) data to a **nearby edge server** via **MQTT** over Wi-Fi, enabling **real-time monitoring** and **seamless integration** with other services.
 
 5. **Phase 5** – **LoRaWAN Transmission to the Cloud**  
    The aggregated data is transmitted to the cloud using LoRaWAN. This phase enables low-power, long-range communication suitable for remote or battery-powered deployments.
@@ -35,50 +35,50 @@ We **publish** the aggregated (rolling average) data to a **nearby edge server**
 
 ### Phase 1: Determine Maximum Sampling Frequency
 
-In this phase, we measure how fast the Heltec WiFi LoRa V3 board can acquire samples. We continuously read from the ADC in a tight loop for 1 second, then count the total number of samples collected. Converting that count to “samples per second” (Hz) gives us the board’s maximum practical sampling rate.
+This phase measures the maximum achievable sampling rate of the Heltec WiFi LoRa V3 board. The ADC is read continuously in a tight loop for 1 second, and the total number of collected samples is used to calculate the sampling frequency in hertz (Hz).
 
 **Code Reference**: [maximum-theoretical-frequency.ino](/sampling/maximum-theoretical-frequency.ino)
 
-**Outcome**:
-By sampling on ADC pin **7**, we observed an approximate **32.200 Hz** sampling rate. This value is our baseline “maximum sampling frequency,” guiding how we set the upper bound for all subsequent phases in this project.
+**Outcome**:  
+Sampling on ADC pin **7** resulted in an approximate sampling rate of **32,200 Hz**. This value serves as the baseline maximum sampling frequency for setting the upper bound in subsequent phases.
 
 ### Phase 2: FFT and Adaptive Sampling
 
-In this phase, we initially tried using our **theoretical maximum** (around 32,200 Hz) from Phase 1. Once we added the **real workloads**—including FFT computations and other tasks—our system became **unreliable** at that rate. Through experimentation, we found that **5 kHz** was both **stable** and **sufficient** for our signal needs (up to ~2.5 kHz, following Nyquist’s rule).
+In this phase, the initial approach used the **theoretical maximum** sampling rate (~32,200 Hz) from Phase 1. However, once **real workloads**—such as FFT computations and other tasks, were introduced, the system became **unreliable** at that rate. Through experimentation, a sampling rate of **5 kHz** was found to be both **stable** and **sufficient** for the target signal range (up to ~2.5 kHz, based on Nyquist’s rule).
 
 **Code Reference**: [fft-and-adaptive-sampling.ino](/sampling/fft-and-adaptive-sampling.ino)
 
 **Outcome**:  
-We set a **5 kHz** sampling frequency as our practical upper bound for capturing and analyzing signals with the ESP32. This rate balances **signal fidelity** with the **processing overhead** needed.  
+A **5 kHz** sampling frequency was selected as the practical upper bound for capturing and analyzing signals with the ESP32. This rate maintains a balance between **signal fidelity** and **processing overhead**.
 
-When testing our **simulated signal**, we identified a **maximum frequency component** of ~205.19 Hz in the FFT output. By **Nyquist’s theorem**, the **minimum** sampling frequency to reconstruct this signal without aliasing is **2 × 205.19 Hz ≈ 410.38 Hz**.  
+When testing a **simulated signal**, the FFT output showed a **maximum frequency component** of ~205.19 Hz. Based on **Nyquist’s theorem**, the **minimum** sampling frequency required to avoid aliasing is **2 × 205.19 Hz ≈ 410.38 Hz**.
 
 ### Phase 3: Compute Aggregate Over a Window
 
-In this phase, we aggregate our signal data by computing a **rolling average** over a **0.1‑second window**. Our implementation uses two dedicated **FreeRTOS tasks**: one task generates a composite signal made of 150 Hz and 200 Hz sine waves at an internal simulation rate of 5 kHz, and another task samples that generated signal at approximately 410 Hz. The sampling task uses a ring buffer (storing roughly 41 samples) along with a running sum to efficiently compute the rolling average as new samples arrive and the oldest ones are discarded.
+This phase introduces signal aggregation by computing a **rolling average** over a **0.1‑second window**. The implementation uses two dedicated **FreeRTOS tasks**: one task generates a composite signal consisting of 150 Hz and 200 Hz sine waves at a simulation rate of 5 kHz, while the other samples this signal at approximately 410 Hz. A ring buffer (holding around 41 samples) and a running sum are used to efficiently compute the rolling average as new samples are added and the oldest are removed.
 
 **Code Reference**: [rolling-average.ino](/aggregate-function-and-transmission/rolling-average.ino)
 
 **Outcome**:  
-The outcome is a **continuous rolling average signal** computed over a 0.1‑second window.
+The result is a **continuous rolling average signal** computed over a 0.1‑second window.
 
 ![Screenshot From 2025-04-03 17-07-49](https://github.com/user-attachments/assets/872c60f0-ab9a-4d3d-a9ac-fcc47671cfa1)
 
 
 ### Phase 4: MQTT Transmission to an Edge Server over WiFi
 
-In this phase, we **transmit the rolling average** value computed in Phase 3 to an **edge server** using **MQTT** over Wi-Fi. We introduce **WiFi connectivity** and **MQTT publishing** into our existing FreeRTOS tasks, ensuring that the **aggregated data** is sent in real time as it’s computed. For demonstration, we use **Adafruit IO** as a convenient MQTT platform, but this approach works similarly with other MQTT brokers.
+In this phase, the **rolling average** value computed in Phase 3 is **transmitted to an edge server** using **MQTT** over Wi-Fi. WiFi connectivity and MQTT publishing are integrated into the existing FreeRTOS tasks to ensure that **aggregated data** is sent in real time. For demonstration purposes, **Adafruit IO** is used as the MQTT platform, though the same approach applies to other brokers.
 
 **Key Steps**:
-1. **Connect to WiFi** – Provide your SSID and password so the ESP32 can join your local network.  
-2. **Initialize MQTT** – Configure the MQTT client (e.g., AdafruitIO_WiFi or PubSubClient) with broker credentials (username, key, or password).  
-3. **Publish the Aggregate** – After computing the rolling average, publish it to an MQTT topic (e.g., `sensor-rolling-average`).  
-4. **Monitor** – Subscribe to the same MQTT topic from a dashboard or command-line client to verify data is arriving.
+1. **Connect to WiFi** – Provide the SSID and password to connect the ESP32 to the local network.  
+2. **Initialize MQTT** – Set up the MQTT client (e.g., AdafruitIO_WiFi or PubSubClient) with broker credentials.  
+3. **Publish the Aggregate** – Send the rolling average to an MQTT topic (e.g., `sensor-rolling-average`) after each computation.  
+4. **Monitor** – Subscribe to the topic using a dashboard or command-line client to verify data reception.
 
 **Code Reference**: [rolling-average-WiFi-MQTT.ino](/aggregate-function-and-transmission/rolling-average-WiFi-MQTT/rolling-average-WiFi-MQTT.ino)
 
 **Outcome**:  
-By integrating **MQTT** into the sampling/aggregation task, the **rolling average** value is now **transmitted** to a nearby (or cloud-based) edge server. This provides a **low-overhead** way to feed the processed data into dashboards, analytics engines, or any system that can subscribe to MQTT topics.
+With **MQTT** integrated, the **rolling average** value is now **transmitted** to a local or cloud-based edge server. This enables a **low-overhead** pipeline for delivering processed data to dashboards, analytics tools, or any MQTT-compatible system.
 
 ![image](https://github.com/user-attachments/assets/31257d0b-24b4-4665-8465-88f9152a1fdb)
 
@@ -86,9 +86,9 @@ By integrating **MQTT** into the sampling/aggregation task, the **rolling averag
 
 ### Phase 5: LoRaWAN Uplink to The Things Network (TTN) and MQTT Subscription
 
-In this phase, we replace the MQTT-based Wi-Fi transmission with **LoRaWAN** + MQTT. The device now transmits the **rolling average**, computed in Phase 3, over **LoRaWAN** to **The Things Network (TTN)**—a public, decentralized LoRaWAN infrastructure.
+In this phase, the MQTT-based Wi-Fi transmission is replaced with **LoRaWAN** + MQTT. The device transmits the **rolling average**, computed in Phase 3, over **LoRaWAN** to **The Things Network (TTN)**, a public, decentralized LoRaWAN infrastructure.
 
-The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-Air Activation)**. The **Heltec LoRaWAN library** manages the join request, uplink scheduling, and network interaction.
+The rolling average is encoded as a **4-byte float uplink** and sent using **OTAA (Over-The-Air Activation)**. The **Heltec LoRaWAN library** handles the join procedure, uplink scheduling, and network communication.
 
 **Code Reference**: [rolling-average-LoRa-MQTT.ino](aggregate-function-and-transmission/rolling-average-LoRa-MQTT/rolling-average-LoRa-MQTT.ino)
 
@@ -123,7 +123,7 @@ The rolling average is sent as a **4-byte float uplink** using **OTAA (Over-The-
 
      ![image](https://github.com/user-attachments/assets/5b03b54f-ad5f-48b9-9e23-6e82f6e49f7f)
 
-   - We use a simple Bash script to subscribe to the uplink topic:  
+   - A simple Bash script is used to subscribe to the uplink topic:  
 
      ```bash
      #!/bin/bash
@@ -240,7 +240,7 @@ The way data is transmitted, and the impact on power consumption, varies greatly
 
 The FreeRTOS tasks are always active, resulting in a steady power draw from the CPU and memory. However, the wireless transceiver is only enabled during transmission. Between transmissions, the system enters **modem sleep**, a low-power state in which the CPU continues to operate while the radio remains off. In this state, the device draws approximately **20 mA** at most.
 
-Every 15 seconds, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most **260 mA** during transmission. 
+**Every 15 seconds**, the device transmits a small payload over LoRa containing the computed rolling average (a 4-byte float). This triggers a short spike in power usage, reaching at most **260 mA** during transmission. 
 
 The duration of each LoRa transmission (time-on-air) was calculated based on the LoRaWAN physical layer settings used in this implementation. We set the default data rate (DR) to 3
 
@@ -257,7 +257,7 @@ Given these parameters, the region that we are currently using and the size of t
 
 ![image](https://github.com/user-attachments/assets/58021857-dac2-49cc-84bc-825b6a18ec83)
 
-So our duty cycle looks like this:
+So the duty cycle looks like this:
 
 ![3f8a5ecf-4b5d-4c2b-8462-05d92fa7bb0d](https://github.com/user-attachments/assets/ec3c4b4e-dbf1-45b5-ab2c-53f0a6915e55)
 
@@ -423,6 +423,6 @@ Feel free to submit pull requests for improvements or open issues for any bugs o
 
 ## License
 
-This project is open-source. You can use it in your own IoT adventures—just be sure to pay it forward and give credit where it’s due.
+This project is open-source.
 
 ---
