@@ -22,7 +22,7 @@ uint8_t confirmedNbTrials     = 4; // number of trials for confirmed messages (i
 // -----------------------------------------------------------------------------
 // Rolling average / signal generation parameters
 // -----------------------------------------------------------------------------
-static const double GENERATOR_RATE = 5000.0;   // "simulation rate" for generator task
+static const double GENERATOR_RATE = 1000.0;   // "simulation rate" for generator task
 
 static const double FREQ1 = 150.0;  // Hz
 static const double AMP1  = 2.0;
@@ -37,16 +37,14 @@ static const double AVERAGE_WINDOW_SEC = 0.1; //sliding window size in seconds
 static const int AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5); // # of samples in the averaging window
 
 // -----------------------------------------------------------------------------
-// Global Shared Data
+// Global Shared Queues
 // -----------------------------------------------------------------------------
 
-// This is updated by Task A and read by Task B.
-volatile double g_currentSignalValue = 0.0;
-// This is updated by Task B and read by prepareTxFrame()
-volatile double g_latestRollingAverage = 0.0;
+QueueHandle_t signalQueue; // for passing raw samples
+QueueHandle_t averageQueue; // for passing latest rolling average
 
 // -----------------------------------------------------------------------------
-// Task A: Generate a composite signal at ~5000 steps/sec
+// Task A: Generate a composite signal at ~1000 steps/sec
 // -----------------------------------------------------------------------------
 void generateSignalTask(void *pvParameters) {
   const double dt = 1.0 / GENERATOR_RATE; // time step in seconds
@@ -56,7 +54,9 @@ void generateSignalTask(void *pvParameters) {
     // Composite signal: 2*sin(2π*150*t) + 4*sin(2π*200*t)
     double sample = AMP1 * sin(2.0 * PI * FREQ1 * t) +
                     AMP2 * sin(2.0 * PI * FREQ2 * t);
-    g_currentSignalValue = sample;
+
+    // Send to queue (overwrite so latest value is always available)
+    xQueueOverwrite(signalQueue, &sample);
 
     // Advance time
     t += dt;
@@ -65,7 +65,7 @@ void generateSignalTask(void *pvParameters) {
     }
 
     // ~1 ms delay => ~5000 samples/sec
-    vTaskDelay(pdMS_TO_TICKS(1));
+    vTaskDelay(pdMS_TO_TICKS(1000.0 / GENERATOR_RATE));
   }
 }
 
@@ -86,28 +86,31 @@ void sampleSignalTask(void *pvParameters) {
   }
 
   for (;;) {
-    // Sliding window implementation
-    // 1) Read the latest sample from Task A
-    double newSample = g_currentSignalValue;
+    double newSample = 0.0;
 
-    // 2) Remove the oldest sample from the sum
-    ringSum -= ringBuffer[ringIndex];
+    // Read from signal queue (non-blocking)
+    if (xQueueReceive(signalQueue, &newSample, 0) == pdPASS) {
 
-    // 3) Place the new sample in the buffer and add it to the sum
-    ringBuffer[ringIndex] = newSample;
-    ringSum += newSample;
+      // Sliding window implementation
+      // 1) Remove the oldest sample from the sum
+      ringSum -= ringBuffer[ringIndex];
 
-    // 4) Advance the ring buffer index (circular buffer)
-    ringIndex++;
-    if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
-      ringIndex = 0;
+      // 2) Place the new sample in the buffer and add it to the sum
+      ringBuffer[ringIndex] = newSample;
+      ringSum += newSample;
+
+      // 3) Advance the ring buffer index (circular buffer)
+      ringIndex++;
+      if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
+        ringIndex = 0;
+      }
+
+      // 4) Compute the rolling average
+      double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
+
+      // 5) Send the result to the average queue
+      xQueueOverwrite(averageQueue, &rollingAverage);
     }
-
-    // 5) Compute the rolling average
-    double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
-
-    // 6) Update the global variable for transmission
-    g_latestRollingAverage = rollingAverage;
 
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
@@ -118,7 +121,8 @@ void sampleSignalTask(void *pvParameters) {
 // -----------------------------------------------------------------------------
 static void prepareTxFrame(uint8_t port) {
   // Send rolling average as a 4-byte float
-  float val = (float)g_latestRollingAverage;
+  float val = 0.0f;
+  xQueuePeek(averageQueue, &val, 0); // read the latest value without removing it
 
   // The Heltec library gives us global appData[] & appDataSize to be set!
   memcpy(appData, &val, sizeof(float));
@@ -130,8 +134,7 @@ static void prepareTxFrame(uint8_t port) {
 // -----------------------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  while (!Serial) { /* wait for monitor */
-  }
+  while (!Serial) { /* wait for monitor */ }
 
   Serial.println("Starting Heltec + RTOS tasks...");
 
@@ -140,6 +143,14 @@ void setup() {
 
   // Set initial device state (uses Heltec's global deviceState)
   deviceState = DEVICE_STATE_INIT;
+
+  // Create queues
+  signalQueue = xQueueCreate(1, sizeof(double));
+  averageQueue = xQueueCreate(1, sizeof(double));
+  if (!signalQueue || !averageQueue) {
+    Serial.println("Queue creation failed!");
+    while (1);
+  }
 
   // Create Task A: generates the composite sine wave
   xTaskCreate(

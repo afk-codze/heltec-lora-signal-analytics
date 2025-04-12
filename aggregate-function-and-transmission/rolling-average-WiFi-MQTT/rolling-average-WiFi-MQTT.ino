@@ -9,7 +9,7 @@
 // -----------------------------------------------------------------------------
 
 // Signal generation parameters
-static const double GENERATOR_RATE     = 5000.0;  // "simulation rate" for generator task
+static const double GENERATOR_RATE     = 1000.0;  // "simulation rate" for generator task (Hz)
 
 static const double FREQ1              = 150.0;   // Hz
 static const double AMP1               = 2.0;
@@ -27,15 +27,15 @@ static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_W
 // Global Shared Data
 // -----------------------------------------------------------------------------
 
-// This is updated by Task A and read by Task B.
-volatile double g_currentSignalValue = 0.0;
+// Queue used to pass the signal sample from generator to sampler tasks
+QueueHandle_t signalQueue;
 
 // Create Adafruit IO instance and feed globally
 AdafruitIO_WiFi io(IO_USERNAME, IO_KEY, WIFI_SSID, WIFI_PASS);
 AdafruitIO_Feed *avgFeed = io.feed("sensor-rolling-average");
 
 // -----------------------------------------------------------------------------
-// Task A: Generate a composite signal at ~5000 steps/sec
+// Task A: Generate a composite signal at ~1000 samples/sec
 // -----------------------------------------------------------------------------
 void generateSignalTask(void *pvParameters)
 {
@@ -48,7 +48,8 @@ void generateSignalTask(void *pvParameters)
     double sample = AMP1 * sin(2.0 * PI * FREQ1 * t) +
                     AMP2 * sin(2.0 * PI * FREQ2 * t);
 
-    g_currentSignalValue = sample;
+    // Pass the sample to the sampler task via queue (overwrite mode)
+    xQueueOverwrite(signalQueue, &sample);
 
     // Advance time
     t += dt;
@@ -56,7 +57,8 @@ void generateSignalTask(void *pvParameters)
       t -= 1.0; // wrap around after 1 second
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1)); // delay 1 ms converted to ticks
+    // Delay to match GENERATOR_RATE (5000 Hz)
+    vTaskDelay(pdMS_TO_TICKS(1000.0 / GENERATOR_RATE));
   }
 }
 
@@ -79,36 +81,40 @@ void sampleSignalTask(void *pvParameters)
 
   for (;;)
   {
-    // Sliding window implementation
-    // 1) Read the latest sample from Task A
-    double newSample = g_currentSignalValue;
+    double newSample = 0.0;
 
-    // 2) Remove the oldest sample from the sum
-    ringSum -= ringBuffer[ringIndex];
+    // Read the latest signal sample from the queue
+    if (xQueueReceive(signalQueue, &newSample, 0) == pdPASS)
+    {
+      // Sliding window implementation
+      // 1) Remove the oldest sample from the sum
+      ringSum -= ringBuffer[ringIndex];
 
-    // 3) Place the new sample in the buffer and add it to the sum
-    ringBuffer[ringIndex] = newSample;
-    ringSum += newSample;
+      // 2) Place the new sample in the buffer and add it to the sum
+      ringBuffer[ringIndex] = newSample;
+      ringSum += newSample;
 
-    // 4) Advance the ring buffer index (circular buffer)
-    ringIndex++;
-    if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
-      ringIndex = 0;
+      // 3) Advance the ring buffer index (circular buffer)
+      ringIndex++;
+      if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
+        ringIndex = 0;
+      }
+
+      // 4) Compute the rolling average
+      double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
+
+      // 5) Print the instantaneous sample and the rolling average
+      Serial.print(newSample);
+      Serial.print(" ");
+      Serial.println(rollingAverage);
+
+      // 6) Publish the rolling average to Adafruit IO feed
+      char payload[20];
+      snprintf(payload, sizeof(payload), "%.2f", rollingAverage);
+      avgFeed->save(payload);
     }
 
-    // 5) Compute the rolling average
-    double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
-
-    // 6) Print the instantaneous sample and the rolling average
-    Serial.print(newSample);
-    Serial.print(" ");
-    Serial.println(rollingAverage);
-
-    // 7) Publish the rolling average to Adafruit IO feed
-    char payload[20];
-    snprintf(payload, sizeof(payload), "%.2f", rollingAverage);
-    avgFeed->save(payload);
-
+    // Delay to match SAMPLER_FREQUENCY (410 Hz)
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
 }
@@ -121,6 +127,13 @@ void setup()
   Serial.begin(115200);
   while (!Serial) { /* wait for Serial Monitor */ }
   Serial.println("Starting RTOS tasks...");
+
+  // Create a queue to hold 1 signal sample (double)
+  signalQueue = xQueueCreate(1, sizeof(double));
+  if (signalQueue == NULL) {
+    Serial.println("Queue creation failed!");
+    while (1);
+  }
 
   // Connect to Adafruit IO
   io.connect();
