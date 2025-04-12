@@ -33,14 +33,18 @@ This repository demonstrates how to build an **IoT system** on a **Heltec WiFi L
 
 ## Project Phases in Detail
 
-### Phase 1: Determine Maximum Sampling Frequency
+### Phase 1: Determine Maximum Queue Read Frequency
 
-This phase measures the maximum achievable sampling rate of the Heltec WiFi LoRa V3 board. The ADC is read continuously in a tight loop for 1 second, and the total number of collected samples is used to calculate the sampling frequency in hertz (Hz).
+This phase measures the **maximum achievable queue read rate** on the Heltec WiFi LoRa V3 board.  
+A producer task continuously pushes values into a FreeRTOS queue, while a consumer task runs for exactly 1 second, reading as fast as possible.  
+The total number of dequeued items is used to calculate the sampling rate in hertz (Hz).  
+This approach anticipates later phases where the signal will be generated internally and sampled via a queue.
 
-**Code Reference**: [maximum-theoretical-frequency.ino](/sampling/maximum-theoretical-frequency.ino)
+**Code Reference**: [maximum-queue-read-frequency.ino](/sampling/maximum-queue-read-frequency.ino)
 
 **Outcome**:  
-Sampling on ADC pin **7** resulted in an approximate sampling rate of **32,200 Hz**. This value serves as the baseline maximum sampling frequency for setting the upper bound in subsequent phases.
+Reading from a FreeRTOS queue resulted in an approximate read rate of **176765.00 Hz**.  
+This value represents the theoretical upper bound of how fast data can be consumed from a queue under ideal conditions.
 
 ### Phase 2: FFT and Adaptive Sampling
 
