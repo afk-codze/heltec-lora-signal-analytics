@@ -1,11 +1,12 @@
 #include <Arduino.h>
 #include <FreeRTOS.h>
+#include <queue.h>
 
 // -----------------------------------------------------------------------------
 // Parameters
 // -----------------------------------------------------------------------------
 
-static const double GENERATOR_RATE     = 5000.0;  // "simulation rate" for generator task (Hz)
+static const double GENERATOR_RATE     = 1000.0;  // "simulation rate" for generator task (Hz)
 
 static const double FREQ1              = 150.0;   // Hz
 static const double AMP1               = 2.0;
@@ -16,18 +17,17 @@ static const double AMP2               = 4.0;
 static const double SAMPLER_FREQUENCY  = 410.0;   // Hz
 static const int    SAMPLER_PERIOD_MS  = (int)(1000.0 / SAMPLER_FREQUENCY + 0.5); // convert to ms from SAMPLER_FREQUENCY
 
-static const double AVERAGE_WINDOW_SEC = 0.1; //sliding window size in seconds
+static const double AVERAGE_WINDOW_SEC = 0.1; // sliding window size in seconds
 static const int    AVERAGE_WINDOW_SAMPLES = (int)(SAMPLER_FREQUENCY * AVERAGE_WINDOW_SEC + 0.5); // # of samples in the averaging window
 
 // -----------------------------------------------------------------------------
 // Global Shared Data
 // -----------------------------------------------------------------------------
 
-// This is updated by Task A and read by Task B.
-volatile double g_currentSignalValue = 0.0;
+QueueHandle_t signalQueue; // now used instead of g_currentSignalValue
 
 // -----------------------------------------------------------------------------
-// Task A: Generate a composite signal at ~5000 steps/sec
+// Task A: Generate a composite signal at ~1000 steps/sec
 // -----------------------------------------------------------------------------
 void generateSignalTask(void *pvParameters)
 {
@@ -36,11 +36,10 @@ void generateSignalTask(void *pvParameters)
 
   for (;;) // infinite loop
   {
-    // Composite signal: 2*sin(2π*150*t) + 4*sin(2π*200*t)
     double sample = AMP1 * sin(2.0 * PI * FREQ1 * t) +
                     AMP2 * sin(2.0 * PI * FREQ2 * t);
 
-    g_currentSignalValue = sample;
+    xQueueOverwrite(signalQueue, &sample); // replace previous sample if full
 
     // Advance time
     t += dt;
@@ -48,12 +47,12 @@ void generateSignalTask(void *pvParameters)
       t -= 1.0; // wrap around after 1 second
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1)); // delay 1 ms converted to ticks
+    vTaskDelay(pdMS_TO_TICKS(1000.0 / GENERATOR_RATE)); // delay 1 ms converted to ticks
   }
 }
 
 // -----------------------------------------------------------------------------
-// Task B: Sample continuously at ~410 Hz and compute a 2-second sliding average
+// Task B: Sample continuously at ~410 Hz and compute a 0.1s sliding average
 // -----------------------------------------------------------------------------
 void sampleSignalTask(void *pvParameters)
 {
@@ -71,29 +70,25 @@ void sampleSignalTask(void *pvParameters)
 
   for (;;)
   {
-    // Sliding window implementation
-    // 1) Read the latest sample from Task A
-    double newSample = g_currentSignalValue;
+    double newSample = 0.0;
 
-    // 2) Remove the oldest sample from the sum
-    ringSum -= ringBuffer[ringIndex];
+    if (xQueueReceive(signalQueue, &newSample, 0) == pdPASS)
+    {
+      ringSum -= ringBuffer[ringIndex];
+      ringBuffer[ringIndex] = newSample;
+      ringSum += newSample;
 
-    // 3) Place the new sample in the buffer and add it to the sum
-    ringBuffer[ringIndex] = newSample;
-    ringSum += newSample;
+      ringIndex++;
+      if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
+        ringIndex = 0; // wrap around
+      }
 
-    // 4) Advance the ring buffer index (circular buffer)
-    ringIndex++;
-    if (ringIndex >= AVERAGE_WINDOW_SAMPLES) {
-      ringIndex = 0; // wrap around
+      double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
+
+      Serial.print(newSample);
+      Serial.print(" ");
+      Serial.println(rollingAverage);
     }
-
-    // 5) Compute the rolling average
-    double rollingAverage = ringSum / AVERAGE_WINDOW_SAMPLES;
-
-    Serial.print(newSample);
-    Serial.print(" ");
-    Serial.println(rollingAverage);
 
     vTaskDelay(pdMS_TO_TICKS(SAMPLER_PERIOD_MS));
   }
@@ -108,25 +103,14 @@ void setup()
   while (!Serial) { /* wait for Serial Monitor */ }
   Serial.println("Starting RTOS tasks...");
 
-  // Task A: generates the composite sine wave
-  xTaskCreate(
-    generateSignalTask, // Pointer to the function implementing the task
-    "GenerateTask",     // Task name (for debugging)
-    2048,               // Stack
-    NULL,               // Task parameters (not used)
-    1,                  // Task priority (1 is low, 5 is high)
-    NULL                // Task handle (not used)
-  );
+  signalQueue = xQueueCreate(1, sizeof(double));
+  if (signalQueue == NULL) {
+    Serial.println("Queue creation failed!");
+    while (1);
+  }
 
-  // Task B: samples the wave and computes  rolling average
-  xTaskCreate(
-    sampleSignalTask,
-    "SampleTask",
-    4096,
-    NULL,
-    1,
-    NULL
-  );
+  xTaskCreate(generateSignalTask, "GenerateTask", 2048, NULL, 1, NULL);
+  xTaskCreate(sampleSignalTask,   "SampleTask",   4096, NULL, 1, NULL);
 }
 
 // -----------------------------------------------------------------------------
@@ -134,5 +118,5 @@ void setup()
 // -----------------------------------------------------------------------------
 void loop()
 {
-
+  // Nothing here
 }
