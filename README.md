@@ -346,29 +346,40 @@ To measure end-to-end latency over Wi-Fi, we timestamp each MQTT message on the 
 codzetest/feeds/send
 ```
 
-A PC running `mosquitto_sub` listens to that topic and immediately echoes the message back to:
+A PC running `mosquitto_sub` listens to that topic. Upon receiving a message, it measures how long it takes to process and echo the message, then sends it back to:
 
 ```
 codzetest/feeds/echo
 ```
 
-The ESP32, subscribed to the echo topic, receives its own message and computes the round-trip latency as:
+The echoed message includes both the original timestamp and the time (in milliseconds) the PC took to process and send the echo. The format is:
 
 ```
-latency = millis() - sent_timestamp
+<original_timestamp>,<pc_processing_time_ms>
 ```
+
+The ESP32, subscribed to the echo topic, receives the message and computes the round-trip latency as:
+
+```
+latency = millis() - sent_timestamp - pc_processing_time
+```
+
+This provides a more accurate measure of network latency by accounting for the delay introduced on the PC during message processing.
 
 Example command to echo messages on the PC:
 
 ```bash
 mosquitto_sub -h test.mosquitto.org -t "codzetest/feeds/send" | while read line; do
-  mosquitto_pub -h test.mosquitto.org -t "codzetest/feeds/echo" -m "$line"
+  start=$(date +%s%3N)
+  sleep 0.01  # simulate some processing (optional)
+  end=$(date +%s%3N)
+  elapsed=$((end - start))
+  mosquitto_pub -h test.mosquitto.org -t "codzetest/feeds/echo" -m "$line,$elapsed"
 done
 ```
+![image](https://github.com/user-attachments/assets/40f4fe8e-31a2-4a14-b1a8-223cc5008731)
 
-![Screenshot From 2025-04-03 11-31-41](https://github.com/user-attachments/assets/d664105d-eb9b-4b1c-bca3-692e015fae40)
-
-Latency may vary based on network conditions.
+Latency may vary based on network conditions and system load on the PC.
 
 ---
 
