@@ -40,7 +40,7 @@ A producer task continuously pushes values into a FreeRTOS queue, while a consum
 The total number of dequeued items is used to calculate the sampling rate in hertz (Hz).  
 This approach anticipates later phases where the signal will be generated internally and sampled via a queue.
 
-**Code Reference**: [maximum-queue-read-frequency.ino](/sampling/maximum-queue-read-frequency.ino)
+**Code Reference**: [maximum-theoretical-frequency.ino](/sampling/maximum-theoretical-frequency.ino)
 
 **Outcome**:  
 Reading from a FreeRTOS queue resulted in an approximate read rate of **176765.00 Hz**.  
@@ -48,7 +48,7 @@ This value represents the theoretical upper bound of how fast data can be consum
 
 ### Phase 2: FFT and Adaptive Sampling
 
-In this phase, the initial approach used the **theoretical maximum** sampling rate (~32,200 Hz) from Phase 1. However, once **real workloads**—such as FFT computations and other tasks, were introduced, the system became **unreliable** at that rate. Through experimentation, a sampling rate of **5 kHz** was found to be both **stable** and **sufficient** for the target signal range (up to ~2.5 kHz, based on Nyquist’s rule).
+In this phase, the initial approach used the **theoretical maximum** sampling rate (~176765.00 Hz) from Phase 1. However, once **real workloads**—such as FFT computations and other tasks, were introduced, the system became **unreliable** at that rate. Through experimentation, a sampling rate of **5 kHz** was found to be both **stable** and **sufficient** for the target signal range (up to ~2.5 kHz, based on Nyquist’s rule).
 
 **Code Reference**: [fft-and-adaptive-sampling.ino](/sampling/fft-and-adaptive-sampling.ino)
 
@@ -59,14 +59,16 @@ When testing a **simulated signal**, the FFT output showed a **maximum frequency
 
 ### Phase 3: Compute Aggregate Over a Window
 
-This phase introduces signal aggregation by computing a **rolling average** over a **0.1‑second window**. The implementation uses two dedicated **FreeRTOS tasks**: one task generates a composite signal consisting of 150 Hz and 200 Hz sine waves at a simulation rate of 5 kHz, while the other samples this signal at approximately 410 Hz. A ring buffer (holding around 41 samples) and a running sum are used to efficiently compute the rolling average as new samples are added and the oldest are removed.
+This phase introduces signal aggregation by computing a **rolling average** over a **64 samples window**. The implementation uses two dedicated **FreeRTOS tasks**: one task generates a composite signal consisting of 150 Hz and 200 Hz sine waves at a simulation rate of 1 kHz, while the other samples this signal at the dynamically computed frequency. A ring buffer and a running sum are used to efficiently compute the rolling average as new samples are added and the oldest are removed.
+
+**Note:** To ensure the rolling average remains consistent and meaningful, the window size should be adapted when the sampling frequency changes. This guarantees that the averaging window always covers the same duration of time, even if the number of samples varies.
 
 **Code Reference**: [rolling-average.ino](/aggregate-function-and-transmission/rolling-average.ino)
 
 **Outcome**:  
-The result is a **continuous rolling average signal** computed over a 0.1‑second window.
+The result is a **continuous rolling average signal**.
 
-![Screenshot From 2025-04-03 17-07-49](https://github.com/user-attachments/assets/872c60f0-ab9a-4d3d-a9ac-fcc47671cfa1)
+![image](https://github.com/user-attachments/assets/4f970ac9-d6ee-44fe-b41b-74cb121e638d)
 
 
 ### Phase 4: MQTT Transmission to an Edge Server over WiFi
@@ -236,7 +238,7 @@ This section analyzes the energy profile of the current implementations, where r
 
 In both modes, the ESP32 executes:
 - A **signal generation task**, generating a composite signal made of 150 Hz and 200 Hz sine waves at an internal simulation rate of 5 kHz.
-- A **sampling task**, operating at ~410 Hz, that computes a 0.1-second rolling average
+- A **sampling task**, operating at adaptive frequency, that computes a rolling average
 
 The way data is transmitted, and the impact on power consumption, varies greatly between the two communication modes.
 
@@ -277,16 +279,35 @@ This introduces jitter around the 15-second base interval, reducing the likeliho
 
 In the Wi-Fi configuration, the ESP32 again runs the same two tasks for signal generation and rolling average computation. However, in this mode, the average value is **published continuously** to **Adafruit IO** using the MQTT protocol, resulting in a very different power profile.
 
-- The **sampling task** operates at ~410 Hz (every 2.44 ms) and calls `avgFeed->save(...)` at each iteration.
+- The **sampling task** operates at an adaptive frequency and calls `avgFeed->save(...)` at each iteration.
 - While the `save()` call is lightweight in code, it triggers **frequent network activity**, especially if Adafruit IO accepts high-frequency publishing.
 
 The device remains in **active Wi-Fi mode** continuously:
-- **Wi-Fi Idle Current**: ~80 mA (ESP32 connected to Wi-Fi, not transmitting)
-- **Transmission Spikes**: ~260 mA every ~0.5 seconds, each lasting ~150 ms (based on MQTT behavior and practical measurements)
+- **Wi-Fi Idle Current**: ~160 mA (ESP32 connected to Wi-Fi, not transmitting)
+- **Transmission Spikes**: ~260 mA every ~0.1 seconds, each lasting ~150 ms (based on MQTT behavior and practical measurements)
 
-These frequent spikes result in a high-duty-cycle transmission pattern, clearly visible in the energy profile:
+#### Theoretical analysis:
 
-![output](https://github.com/user-attachments/assets/f84bee48-c49b-4a90-992f-7905d506480d)
+These frequent spikes result in a high-duty-cycle transmission pattern, clearly visible in the energy profile (Duty cycle):
+
+![output](https://github.com/user-attachments/assets/36c52f3f-8be5-4974-8b71-5e898907ba8b)
+
+#### Practical analysis:
+
+The testbed consists of two Heltec LoRa 32 V3 boards. One acts as the device under test, running a FreeRTOS-based signal sampling and transmission routine, while the other is configured as a power monitor using an INA219 sensor. The sampling board generates a composite sine wave, performs FFT-based learning, and enters an adaptive sampling phase with periodic uploads to Adafruit IO via Wi-Fi. The INA219 continuously records the current drawn by the board.
+
+**Code Reference**: [power-monitor.ino](/power-monitor/power-monitor.ino)
+
+![photo_2025-04-13_21-34-34](https://github.com/user-attachments/assets/7b542c0b-371a-4300-ba85-f9a268431dbf)
+
+**Outcome:**  
+In the default configuration, the ESP32 enables automatic Wi-Fi power saving. As a result, the measured current periodically dropped to around 160 mA (Wi-Fi Idle expected power draw). These dips were caused by background power-saving behavior, such as light sleep and reduced radio activity.  
+
+![Screenshot From 2025-04-13 19-23-01](https://github.com/user-attachments/assets/fd68fff3-6af8-458c-99fc-43ca2cebf4b4)
+
+To confirm that this behavior was indeed caused by Wi-Fi power saving, we explicitly disabled it using `esp_wifi_set_ps(WIFI_PS_NONE);`. This removed the periodic dips entirely: the current remained steady at ~180 mA during idle periods and reached ~250 mA only during Wi-Fi transmissions.
+
+![Screenshot From 2025-04-13 21-08-09](https://github.com/user-attachments/assets/b488dc01-a2c0-4e61-a691-69d703991251)
 
 ---
 
